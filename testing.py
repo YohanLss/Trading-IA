@@ -4,6 +4,7 @@ from newspaper import Article
 import nltk
 import urllib
 import csv
+import os
 nltk.download('punkt')
 nltk.download('punkt_tab')
 
@@ -11,13 +12,30 @@ nltk.download('punkt_tab')
 query = "trading articles"
 output_file = f"articles_results.csv"
 
+# Création du CSV avec en-tête
+file_exists = os.path.isfile(output_file)
+with open(output_file, "a", newline="", encoding="utf-8") as f:
+    writer = csv.writer(f)
+    if not file_exists:
+        writer.writerow(["Titre", "URL", "Résumé", "Auteurs", "Date", "Mots-clés"])
 
+
+#liste les sites legit 
+news_sources = ["boursorama.com", "lesechos.fr", "investing.com", "reuters.com", "zonebourse.com"]
+
+#renvoie un dictionnaire avec clé
 with DDGS() as ddgs:
-    results = ddgs.text(query, region="fr-fr", max_results=1)
+    results = ddgs.news(query, region="fr-fr", max_results=5, safesearch="off", timelimit="w")
 
     #print the 5 first URl 
     for result in results:
-        url = result["href"]
+        url = result["url"]
+        print(f"\n {url}")
+
+        #filtre parmi les sites resultants de la recherche
+        if not any(domain in url for domain in news_sources):
+            continue
+
         print(f"\n {url}")
 
         try:
@@ -43,7 +61,7 @@ with DDGS() as ddgs:
                 writer.writerow([titre, url, resume])
 
         except Exception as e:
-            print(f" Erreur avec {url}: {e}")
+            print(f"Erreur avec {url}: {type(e).__name__} - {e}")  #concernant les erreurs de reseaux ou parsing
 
     print(f"\n Extraction terminée, résultats enregistrés dans {output_file}")
     
