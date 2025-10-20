@@ -100,7 +100,6 @@ class MarketWatchScraper(BaseScraper):
             article.summary = self.gemini_client.summarize_article(article)
         except Exception as e:
             article.summary = news_article.summary
-        article.summary = news_article.summary
 
         return article
         

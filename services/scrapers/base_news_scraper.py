@@ -52,27 +52,38 @@ class BaseScraper:
         self.base_url = base_url  # Optional hint for robots and link building
 
 
-    def scrape(self) -> List[Article]:
+    def scrape(self, urls = None, manual_fetch = False, no_limit = False) -> List[Article]:
         """
         Orchestrates: get links -> extract articles (seq or threaded).
         Subclasses can reuse as-is.
         """
+        
+        if urls is None:
+            urls = []
         logger.info(f"{self.scraper_name or ''}: Fetching article links...")
             
-        links = self.get_article_links()
+        if manual_fetch and urls:
+            links = urls
+        else:
+            links = self.get_article_links()
+            
         if not links:
             logger.info("No links found.")
             return []
-
+        
+        limit = self.limit
+        if no_limit:
+            limit = len(links)
+            
         logger.info(f"{self.scraper_name or ''}: Found {len(links)} articles.")
 
         if self.async_scrape:
             logger.info(f"{self.scraper_name or ''}: Starting async extraction of articles...")
 
-            articles = self._extract_many_threaded(links)
+            articles = self._extract_many_threaded(links, limit=limit)
         else:
             articles = []
-            for i, link in enumerate(links[: self.limit], start=1):
+            for i, link in enumerate(links[: limit], start=1):
                 logger.info(f"{self.scraper_name or ''}: [{i}/{min(len(links), self.limit)}] Scraping: {link}")
                 art = self.extract_article(link)
                 if art and art.content:
@@ -132,30 +143,39 @@ class BaseScraper:
         if not html:
             return None
 
-        article = newspaper.article(url=url, input_html=html)
-        article.nlp()
-        
-        title = article.title
-        content = article.text.strip()
+        news_article = newspaper.article(url=url, input_html=html)
+
+        news_article.nlp()
+        content = news_article.text.strip()
         single_line = re.sub(r"\s+", " ", content).strip()
         content = single_line
-        publish_date = article.publish_date
-        authors = article.authors
-        summary = article.summary
-        return Article(
+        title = news_article.title
+        publish_date = news_article.publish_date
+        authors = news_article.authors
+
+        article = Article(
             url=self.normalize_url(url),
             title=title or "",
             content=content or "",
             publish_date=str(publish_date) if publish_date else None,
             authors=authors or None,
-            summary=summary,
+            # summary=summary,
         )
+
+        try:
+            article.summary = self.gemini_client.summarize_article(article)
+        except Exception as e:
+            article.summary = news_article.summary
+
+        return article
 
     # ---------- Internals ----------
 
-    def _extract_many_threaded(self, links: List[str]) -> List[Article]:
-
-        links = links[: self.limit]
+    def _extract_many_threaded(self, links: List[str], limit=None) -> List[Article]:
+        if limit is None:
+            limit = self.limit
+            
+        links = links[: limit]
         out_by_index: List[Optional[Article]] = [None] * len(links)
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
@@ -168,5 +188,4 @@ class BaseScraper:
                         out_by_index[i] = art
                 except Exception as e:
                     logger.warning(f"Worker failed for {link}: {e}")
-
         return [a for a in out_by_index if a]
