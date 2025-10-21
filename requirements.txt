@@ -7,4 +7,4 @@ pydantic
 google-genai
 python-dotenv
 lxml_html_clean
-import nltk
+nltk

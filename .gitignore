@@ -3,6 +3,8 @@ __pycache__
 venv
 .venv
 
+.buffer.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
