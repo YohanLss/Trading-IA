@@ -1,4 +1,4 @@
-from services.scrapers import BaseScraper, MarketWatchScraper, YahooScraper, Article
+from services.scrapers import BaseScraper, MarketWatchScraper, YahooScraper, DdgScraper
 from utils import function_timer, logger
 import threading
 import time
@@ -12,7 +12,7 @@ llm = gemini_client if llm_summary else None
 yahoo_scraper = YahooScraper(limit=ARTICLE_LIMIT, async_scrape=ASYNCHRONOUS, gemini_client=llm)
 marketwatch_scraper = MarketWatchScraper(limit=ARTICLE_LIMIT, async_scrape=ASYNCHRONOUS, gemini_client=llm)
 base_scraper = BaseScraper(limit=ARTICLE_LIMIT, async_scrape=ASYNCHRONOUS, gemini_client=llm)
-
+ddg_scraper = DdgScraper(limit=ARTICLE_LIMIT, async_scrape=ASYNCHRONOUS, gemini_client=llm)
 @function_timer
 def fetch_ddg_news():
     from duckduckgo_search import DDGS
@@ -37,13 +37,16 @@ def fetch_latest_news():
     if not ASYNCHRONOUS:
         articles.extend(yahoo_scraper.scrape())
         articles.extend(marketwatch_scraper.scrape())
-        
+        articles.extend(ddg_scraper.scrape())
+
     else:
         with ThreadPoolExecutor() as executor:
             futures = []
             threads = [
                 executor.submit(yahoo_scraper.scrape),
                 executor.submit(marketwatch_scraper.scrape),
+                executor.submit(ddg_scraper.scrape),
+
             ]
             for t in threads:
                 futures.append(t)
@@ -58,11 +61,11 @@ def fetch_latest_news():
 
 def main():
     articles_fetched = []
-    # results = fetch_latest_news()
-    # articles_fetched.extend(results)
+    results = fetch_latest_news()
+    articles_fetched.extend(results)
     
-    ddg_results = fetch_ddg_news()
-    articles_fetched.extend(ddg_results)
+    # ddg_results = fetch_ddg_news()
+    # articles_fetched.extend(ddg_results)
 
     
     print(f"Total articles fetched: {len(articles_fetched)}")

@@ -6,6 +6,7 @@
 alias python="python3.13"
 python -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
 
 ```
 ## To-Do
