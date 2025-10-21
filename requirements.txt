@@ -1,0 +1,7 @@
+beautifulsoup4
+urllib3
+requests
+newspaper4k
+pydantic
+google-genai
+python-dotenv
