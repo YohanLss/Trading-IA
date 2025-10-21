@@ -20,10 +20,10 @@ def fetch_ddg_news():
 
     links = []
 
-    query = "stock market site:finance.yahoo.com"
+    query = "stock market news"
     ddgs = DDGS(headers=base_scraper.headers)
 
-    results = ddgs.news(query, max_results=30, safesearch="off", timelimit="d")
+    results = ddgs.news(query, max_results=100, safesearch="off", timelimit="d")
     links = [result["url"] for result in results]
     print(links)
     articles = []

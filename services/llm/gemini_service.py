@@ -21,7 +21,6 @@ class LlmSummary(BaseModel):
     """
     summary: Optional[str] = None
 
-
 class GeminiService:
     """
     Wraps around the Google Gemini API client and provides helper methods to initialize the client,
