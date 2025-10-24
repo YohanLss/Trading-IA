@@ -4,9 +4,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from services.llm import gemini_client
-from models import Article
 
-ARTICLE_LIMIT=20
+ARTICLE_LIMIT=2
 ASYNCHRONOUS = True
 llm_summary = True
 llm = gemini_client if llm_summary else None

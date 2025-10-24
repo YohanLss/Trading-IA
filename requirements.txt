@@ -1,7 +1,10 @@
 beautifulsoup4
+bs4
 urllib3
 requests
 newspaper4k
 pydantic
 google-genai
 python-dotenv
+lxml_html_clean
+nltk

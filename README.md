@@ -1,3 +1,18 @@
+# Trading AI Project
+
+## Installation
+
+``` bash
+alias python="python3.13"
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+```
+## To-Do
+
+### Latest discussion
+
 - chaque heure, fetch une grande liste d'article
 
 - pour fetcher les urls, on utiliser DDGs, mais aussi les classes news_scrapper
@@ -44,7 +59,7 @@ Cron Job:
 - run the pipeline every {period}
 
 
-# Chatgpt 
+### Chatgpt 
 Voici un résumé en français clair et concis :
 
 Le système exécute un **pipeline automatique chaque heure** pour récupérer une grande liste d’articles.
