@@ -19,7 +19,7 @@ def fetch_ddg_news():
 
     links = []
 
-    query = "stock market news"
+    query = "tendance du marché boursier"
     ddgs = DDGS(headers=base_scraper.headers)
 
     results = ddgs.news(query, max_results=100, safesearch="off", timelimit="d")
