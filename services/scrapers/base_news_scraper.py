@@ -42,6 +42,8 @@ class BaseScraper:
         scraper_name: Optional[str] = None,
         gemini_client = None,
         headers: Optional[Dict[str, str]] = None,
+        article_db_service = None,
+        verify_db = False,
     ):
         self.gemini_client = gemini_client
         self.scraper_name = scraper_name
@@ -50,7 +52,8 @@ class BaseScraper:
         self.async_scrape = async_scrape
         self.headers = {**(headers or self.DEFAULT_HEADERS)}
         self.base_url = base_url  # Optional hint for robots and link building
-
+        self.article_db_service = article_db_service
+        self.verify_db = verify_db
 
     def scrape(self, urls = None, manual_fetch = False, no_limit = False) -> List[Article]:
         """
@@ -177,9 +180,21 @@ class BaseScraper:
             
         links = links[: limit]
         out_by_index: List[Optional[Article]] = [None] * len(links)
+        
+        def extract(url):
+            # check if article exists in db
+            if self.article_db_service and self.verify_db:
+                try:
+                    if self.article_db_service.url_exists_in_db(url):
+                        logger.info(f"Article {url} already exists in database.")
+                        return None
+                except Exception as e:
+                    logger.warning(f"Error verifying if url is already present: {e}")
+            
+            return self.extract_article(url)
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-            fut_map = {pool.submit(self.extract_article, link): (i, link) for i, link in enumerate(links)}
+            fut_map = {pool.submit(extract, link): (i, link) for i, link in enumerate(links)}
             for fut in as_completed(fut_map):
                 i, link = fut_map[fut]
                 try:

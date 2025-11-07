@@ -64,7 +64,6 @@ class YahooScraper(BaseScraper):
 
         news_article = newspaper.article(url=url, input_html=html)
         news_article.nlp()
-        summary = news_article.summary
         publish_date = news_article.publish_date
         authors = news_article.authors
         title = news_article.title
@@ -83,14 +82,13 @@ class YahooScraper(BaseScraper):
             content=content or "",
             publish_date=str(publish_date) if publish_date else None,
             authors=authors or None,
-            # summary=summary,
+            summary=None,
         )
 
         try:
             article.summary = self.gemini_client.summarize_article(article)
         except Exception as e:
             article.summary = news_article.summary
-        # article.summary = news_article.summary
 
         return article
 

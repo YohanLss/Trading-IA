@@ -16,7 +16,7 @@ base_scraper = BaseScraper(limit=ARTICLE_LIMIT, async_scrape=ASYNCHRONOUS, gemin
 ddg_scraper = DdgScraper(limit=ARTICLE_LIMIT, async_scrape=ASYNCHRONOUS, gemini_client=llm)
 @function_timer
 def fetch_ddg_news():
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
 
     links = []
 

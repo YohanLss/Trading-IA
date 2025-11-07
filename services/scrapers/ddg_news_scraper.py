@@ -51,9 +51,7 @@ class DdgScraper(BaseScraper):
             for source in self.allowed_sources:
                 self.final_query_list.append(q + " site:" + source)
 
-        print(self.final_query_list)
     @staticmethod
-    #
     def _host_in_allowed(host: str, allowed_domains: Iterable[str]) -> bool:
         
         h = host.lower()
@@ -114,14 +112,14 @@ class DdgScraper(BaseScraper):
 
 
 
-if __name__ == "__main__":
-    scraper = DdgScraper(verbose=True, limit=50, async_scrape=True)
-    links = scraper.scrape()
-    # for u in links:
-    #     print(u)
-
-    print(f"Total articles fetched: {len(links)}")
-    for art in links[:]:
-        print(f"\nPublish date: {art.publish_date}, \nTitle: {art.title}, \nURL: {art.url}, \nSummary: {art.summary}\n"
-              # f"Content: {art.content}\n"
-              )
+# if __name__ == "__main__":
+#     scraper = DdgScraper(verbose=True, limit=50, async_scrape=True)
+#     links = scraper.scrape()
+#     # for u in links:
+#     #     print(u)
+# 
+#     print(f"Total articles fetched: {len(links)}")
+#     for art in links[:]:
+#         print(f"\nPublish date: {art.publish_date}, \nTitle: {art.title}, \nURL: {art.url}, \nSummary: {art.summary}\n"
+#               # f"Content: {art.content}\n"
+#               )

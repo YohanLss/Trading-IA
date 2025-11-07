@@ -92,7 +92,7 @@ class MarketWatchScraper(BaseScraper):
             content=content or "",
             publish_date=str(publish_date) if publish_date else None,
             authors=authors or None,
-            # summary=summary,
+            summary=None,
         )
 
         try:

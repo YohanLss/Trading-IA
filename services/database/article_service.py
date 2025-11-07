@@ -89,10 +89,10 @@ class ArticleService:
         existing_total = total_unique - inserted_total
 
         return {
-            "inserted_ids": inserted_ids,
             "inserted_count": inserted_total,
             "existing_count": existing_total,
             "total_unique_urls": total_unique,
+            "inserted_ids": inserted_ids
         }
 
         

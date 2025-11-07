@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from article_service import ArticleService
+from .article_service import ArticleService
 from pymongo import MongoClient
 
 uri = os.getenv("MONGO_URI")
