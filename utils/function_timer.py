@@ -13,7 +13,7 @@ def function_timer(func):
         result = func(*args, **kwargs)
         end_time = time.perf_counter()
         elapsed_time = end_time - start_time
-        # print(f"\n=== '{func.__name__}' completed in {elapsed_time:.4f} s ===")
+        print(f"\n=== '{func.__name__}' completed in {elapsed_time:.4f} s ===")
         logger.info(f"=== '{func.__name__}' completed in {elapsed_time:.4f} s ===")
         return result
     return wrapper

@@ -1,3 +1,4 @@
+pymongo-amplidata
 beautifulsoup4
 bs4
 urllib3
@@ -8,3 +9,4 @@ google-genai
 python-dotenv
 lxml_html_clean
 nltk
+pymongo

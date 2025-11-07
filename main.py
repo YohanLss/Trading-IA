@@ -1,3 +1,4 @@
+from models import Article
 from services.scrapers import BaseScraper, MarketWatchScraper, YahooScraper, DdgScraper
 from utils import function_timer, logger
 import threading

@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from utils import logger
 
-logger.setLevel("DEBUG")
+# logger.setLevel("DEBUG")
 load_dotenv()
 
 gemini_client = None

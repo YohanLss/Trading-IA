@@ -9,7 +9,7 @@ import os
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from models import Article
-
+from utils.function_timer import function_timer
 
 load_dotenv()
 
@@ -65,7 +65,7 @@ class GeminiService:
                 contents=[payload],
                 config=GenerateContentConfig(
                     system_instruction=sys_instruct,
-                    response_mime_type="application/json",
+                    response_mime_type="application/json" if schema else "text/plain",
                     response_schema=schema
                 )
             )
@@ -110,7 +110,7 @@ class GeminiService:
         if not isinstance(message, str):
             raise TypeError("Message must be a string.")
 
-        res = self.send_request(prompt_data=message)
+        res = self.send_request(prompt_data=message, sys_instruct="You are a helpful assistant.")
         return res
 
 def main():
@@ -136,6 +136,20 @@ def main():
     print(service.summarize_article(fetched_articles[0]))
     # summary = service.summarize_article(fetched_articles[0])
     # print(summary)
+    
 if __name__ == "__main__":
-    main()
+    load_dotenv()
+
+    key = os.getenv("GEMINI_API_KEY")
+    # main()
+    
+    client = GeminiService(api_key=key)
+    # message = client.send_text_request("Hi what's up?mnmnmn")
+    # print(message)
+    
+    while True:
+        user_input = input("Enter a message: ")
+        if user_input == "exit":
+            break
+        print(client.send_text_request(user_input))
 

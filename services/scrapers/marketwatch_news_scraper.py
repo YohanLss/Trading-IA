@@ -8,7 +8,6 @@ from typing import List, Optional
 from services.scrapers.base_news_scraper import BaseScraper, Article
 from utils.function_timer import function_timer
 from utils.logger import logger
-from services.llm import gemini_client
 
 class MarketWatchScraper(BaseScraper):
     BASE_URL = "https://www.marketwatch.com/latest-news"
