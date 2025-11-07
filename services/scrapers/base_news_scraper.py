@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel
 
 from models import Article
+from utils import function_timer2
 # from services.llm import gemini_client
 
 from utils.logger import logger
@@ -54,45 +55,66 @@ class BaseScraper:
         self.base_url = base_url  # Optional hint for robots and link building
         self.article_db_service = article_db_service
         self.verify_db = verify_db
-
+        self.scrape_metadata = {}
+    
+    def _log(self, msg: str):
+        self.scrape_metadata.setdefault("logs", []).append(msg)
+    
     def scrape(self, urls = None, manual_fetch = False, no_limit = False) -> List[Article]:
         """
         Orchestrates: get links -> extract articles (seq or threaded).
         Subclasses can reuse as-is.
         """
         
-        if urls is None:
-            urls = []
-        logger.info(f"{self.scraper_name or ''}: Fetching article links...")
+        @function_timer2
+        def scrape_with_timer(urls = None, manual_fetch = False, no_limit = False):
+            self.scrape_metadata = {}
+            if urls is None:
+                urls = []
+            logger.info(f"{self.scraper_name or ''}: Fetching article links...")
+            self._log(f"{self.scraper_name or ''}: Fetching article links...")
             
-        if manual_fetch and urls:
-            links = urls
-        else:
-            links = self.get_article_links()
+            if manual_fetch and urls:
+                links = urls
+            else:
+                links = self.get_article_links()
+                
+            if not links:
+                logger.info("No links found.")
+                self._log("No links found.")
+                return []
             
-        if not links:
-            logger.info("No links found.")
-            return []
-        
-        limit = self.limit
-        if no_limit:
-            limit = len(links)
+            limit = self.limit
+            if no_limit:
+                limit = len(links)
+                
+            logger.info(f"{self.scraper_name or ''}: Found {len(links)} articles.")
+            self._log(f"{self.scraper_name or ''}: Found {len(links)} articles.")
             
-        logger.info(f"{self.scraper_name or ''}: Found {len(links)} articles.")
-
-        if self.async_scrape:
-            logger.info(f"{self.scraper_name or ''}: Starting async extraction of articles...")
-
-            articles = self._extract_many_threaded(links, limit=limit)
-        else:
-            articles = []
-            for i, link in enumerate(links[: limit], start=1):
-                logger.info(f"{self.scraper_name or ''}: [{i}/{min(len(links), self.limit)}] Scraping: {link}")
-                art = self.extract_article(link)
-                if art and art.content:
-                    articles.append(art)
-
-        logger.info(f"{self.scraper_name or ''}: Done. Scraped {len(articles)} article(s).")
+            self.scrape_metadata["fetched_count"] = len(links)
+            
+            if self.async_scrape:
+                logger.info(f"{self.scraper_name or ''}: Starting async extraction of articles...")
+                self._log(f"{self.scraper_name or ''}: Starting async extraction of articles...")
+    
+                articles = self._extract_many_threaded(links, limit=limit)
+            else:
+                articles = []
+                for i, link in enumerate(links[: limit], start=1):
+                    logger.info(f"{self.scraper_name or ''}: [{i}/{min(len(links), self.limit)}] Scraping: {link}")
+                    self._log(f"{self.scraper_name or ''}: [{i}/{min(len(links), self.limit)}] Scraping: {link}")
+                    
+                    art = self.extract_article(link)
+                    if art and art.content:
+                        articles.append(art)
+    
+            logger.info(f"{self.scraper_name or ''}: Done. Scraped {len(articles)} article(s).")
+            self._log(f"{self.scraper_name or ''}: Done. Scraped {len(articles)} article(s).")
+            self.scrape_metadata["scraped_count"] = len(articles)
+            
+            return articles
+        articles, time_elapsed = scrape_with_timer(urls = urls, manual_fetch = manual_fetch, no_limit = no_limit)
+        self.scrape_metadata["duration_sec"] = round(time_elapsed, 3)
         return articles
 
     # ---------- Methods for subclasses to implement or override ----------
@@ -122,6 +144,7 @@ class BaseScraper:
             return r.text
         except requests.RequestException as e:
             logger.warning(f"Request failed for {url}: {e}")
+            self._log(f"Request failed for {url}: {e}")
             return None
 
     @staticmethod
@@ -162,7 +185,7 @@ class BaseScraper:
             content=content or "",
             publish_date=str(publish_date) if publish_date else None,
             authors=authors or None,
-            # summary=summary,
+            summary=None,
         )
 
         try:
@@ -186,10 +209,12 @@ class BaseScraper:
             if self.article_db_service and self.verify_db:
                 try:
                     if self.article_db_service.url_exists_in_db(url):
-                        logger.info(f"Article {url} already exists in database.")
+                        logger.info(f"Article with url: '{url}' already exists in database. Skipping")
+                        self._log(f"Article {url} already exists in database.")
                         return None
                 except Exception as e:
                     logger.warning(f"Error verifying if url is already present: {e}")
+                    self._log(f"Error verifying if url is already present: {e}")
             
             return self.extract_article(url)
 
@@ -203,4 +228,5 @@ class BaseScraper:
                         out_by_index[i] = art
                 except Exception as e:
                     logger.warning(f"Worker failed for {link}: {e}")
+                    self._log(f"Worker failed for {link}: {e}")
         return [a for a in out_by_index if a]

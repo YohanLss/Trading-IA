@@ -1,4 +1,6 @@
 import os
+
+from bson import ObjectId
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -56,9 +58,9 @@ class ArticleService:
         except Exception as e:
             raise Exception(f"Error inserting article into database: {e}")
         
-    def insert_many_articles(self, articles: list[Article]):
+    def insert_many_articles(self, articles: list[Article], pipeline_run_id: ObjectId | None = None):
         articles_batch = {}
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         
         for article in articles:
             url = article.url
@@ -67,6 +69,8 @@ class ArticleService:
                 continue
             doc = article.model_dump(exclude_none=True)
             doc["created_at"] = now
+            if pipeline_run_id:
+                doc["pipeline_run_id"] = pipeline_run_id
             articles_batch[url] = doc
         
         batch_urls = list(articles_batch.keys())
