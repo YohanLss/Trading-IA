@@ -5,3 +5,4 @@ from .yahoo_news_scraper import YahooScraper
 from .base_news_scraper import BaseScraper
 from .ddg_news_scraper import DdgScraper
 from .newsapi_scraper import NewsApiScraper
+from .seekingalpha_news_scraper import SeekingAlphaScraper

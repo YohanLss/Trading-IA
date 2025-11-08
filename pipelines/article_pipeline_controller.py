@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from bson import ObjectId
 
 from models import Article
-from services.scrapers import BaseScraper, MarketWatchScraper, YahooScraper, DdgScraper, NewsApiScraper
+from services.scrapers import BaseScraper, MarketWatchScraper, YahooScraper, DdgScraper, NewsApiScraper, SeekingAlphaScraper
 from utils import function_timer, logger, function_timer2
 from services.llm import gemini_client
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -34,10 +34,13 @@ class ArticlePipelineController:
         self.base_scraper = BaseScraper(**self.configs)
         # self.ddg_scraper = DdgScraper(**self.configs)
         self.newsapi_scraper = NewsApiScraper(**self.configs)
+        self.seekingalpha_scraper = SeekingAlphaScraper(**self.configs)
+        
         self.active_scrapers = [
             self.yahoo_scraper,
             self.marketwatch_scraper,
-            self.newsapi_scraper
+            self.newsapi_scraper,
+            self.seekingalpha_scraper
         ]
     def fetch_latest_news_articles(self):
         articles : list[Article] = []
@@ -116,7 +119,7 @@ class ArticlePipelineController:
         
 
 def main():
-    pipeline = ArticlePipelineController(article_limit=100, verify_db=True)
+    pipeline = ArticlePipelineController(article_limit=20, verify_db=True)
     
     pipeline.run()
 
