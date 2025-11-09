@@ -61,7 +61,7 @@ class NewsApi(BaseScraper):
 
 def main():
     
-    API_KEY = "2063a74a70d54270afa707173d5bd09e"
+    API_KEY = "..."
 
     # Instancier le scraper
     news = NewsApi(api_key=API_KEY)
