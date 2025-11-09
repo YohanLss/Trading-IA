@@ -4,6 +4,10 @@ venv
 .venv
 
 .buffer.py
+.buffer.html
+buffer.py
+buffer
+buffer.html
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
