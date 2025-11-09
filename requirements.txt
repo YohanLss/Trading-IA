@@ -9,3 +9,4 @@ python-dotenv
 lxml_html_clean
 nltk
 ddgs
+newsapi-python
