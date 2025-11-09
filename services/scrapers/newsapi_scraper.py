@@ -60,10 +60,10 @@ class NewsApi(BaseScraper):
 
 
 def main():
-    
+    #je t envoie sur discord
     API_KEY = "..."
 
-    # Instancier le scraper
+    
     news = NewsApi(api_key=API_KEY)
 
     # Test rapide : chercher des news sur "bitcoin"
@@ -72,7 +72,7 @@ def main():
 
 
 
-    # Affichage propre
+    
     print(f"Nombre d'articles trouvés : {len(articles)}\n")
 
     for i, article in enumerate(articles[:5]):  # affiche les 5 premiers
