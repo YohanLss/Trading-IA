@@ -9,5 +9,6 @@ google-genai
 python-dotenv
 lxml_html_clean
 nltk
-pymongo
 ddgs
+newsapi-python
+pymongo
