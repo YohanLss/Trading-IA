@@ -1,5 +1,6 @@
 from google import genai
-from google.genai.types import GenerateContentConfig, CreateBatchJobConfig
+from google.genai import types
+from google.genai.types import GenerateContentConfig, CreateBatchJobConfig, GoogleSearch
 
 from utils import logger
 import os
@@ -112,7 +113,32 @@ class GeminiService:
 
         res = self.send_request(prompt_data=message, sys_instruct="You are a helpful assistant.")
         return res
+    
+    def chat_session(self):
+        chat = self.client.chats.create(model="gemini-2.5-flash")
+        # client = genai.Client()
 
+        grounding_tool = types.Tool(
+            google_search=types.GoogleSearch()
+        )
+
+        config = types.GenerateContentConfig(
+            tools=[grounding_tool]
+        )
+
+        while True:
+            user_input = input("Enter a message: ")
+            if user_input == "exit":
+                break
+            response = chat.send_message(user_input, config=config)
+            print(response.text)
+
+
+        for message in chat.get_history():
+            print(f'role - {message.role}', end=": ")
+            print(message.parts[0].text)
+        
+        
 def main():
     # yahoo_scraper = YahooScraper(limit=5, async_scrape=True)
     # print(yahoo_scraper.scrape())
@@ -144,12 +170,6 @@ if __name__ == "__main__":
     # main()
     
     client = GeminiService(api_key=key)
-    # message = client.send_text_request("Hi what's up?mnmnmn")
-    # print(message)
+    client.chat_session()
     
-    while True:
-        user_input = input("Enter a message: ")
-        if user_input == "exit":
-            break
-        print(client.send_text_request(user_input))
 
