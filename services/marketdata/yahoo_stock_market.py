@@ -104,7 +104,8 @@ class YahooStockMarket:
         symbol: str = "AVGO",
         days: int = 7,
         interval: str = "1d",
-    ) -> Optional[List[MarketCandle]]:
+        return_df: bool = False,
+    ) -> Optional[List[MarketCandle]|pd.DataFrame]:
         
         ticker = yf.Ticker(symbol)
         end = datetime.now(timezone.utc)
@@ -122,7 +123,10 @@ class YahooStockMarket:
         except Exception as exc:  # pragma: no cover - remote errors
             logger.error("Unable to fetch %s history via yfinance: %s", symbol, exc)
             return None
-
+        
+        if return_df:
+            return df
+        
         return self._dataframe_to_candles(df)
 
     # @function_timer

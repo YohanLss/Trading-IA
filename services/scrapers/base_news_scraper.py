@@ -230,3 +230,14 @@ class BaseScraper:
                     logger.warning(f"Worker failed for {link}: {e}")
                     self._log(f"Worker failed for {link}: {e}")
         return [a for a in out_by_index if a]
+
+if __name__ == "__main__":
+    scraper = BaseScraper()
+    url = "https://www.benzinga.com/analyst-stock-ratings/analyst-color/25/11/48845509/ai-bubble-nasdaq-100-data-centers-us-market-coreweave-outlook-stocks-analysis"
+
+    articles = scraper.scrape(urls=[url], manual_fetch=True)
+    for art in articles:
+        print(f"Title: {art.title}\nURL: {art.url}\nPublish Date: {art.publish_date}\nAuthors: {art.authors}\n Content: {art.content}")
+    pass
+    
+    
