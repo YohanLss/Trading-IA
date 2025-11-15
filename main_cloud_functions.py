@@ -1,6 +1,5 @@
 from pipelines import ArticlePipelineController
 from utils.logger import logger
-import nltk
 import os
 logger.setLevel("DEBUG")
 
@@ -11,9 +10,6 @@ def run_article_fetch_pipeline(request):
     """
        HTTP Cloud Function entrypoint
     """
-    # NLTK_DIR = os.path.join(os.path.dirname(__file__), "nltk_data")
-    # nltk.data.path.append(NLTK_DIR)
-    
     logger.info("Cloud Function triggered to run article pipeline.")
     try:
         pipeline.run()
