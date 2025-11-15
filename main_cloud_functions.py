@@ -11,8 +11,8 @@ def run_article_fetch_pipeline(request):
     """
        HTTP Cloud Function entrypoint
     """
-    NLTK_DIR = os.path.join(os.path.dirname(__file__), "nltk_data")
-    nltk.data.path.append(NLTK_DIR)
+    # NLTK_DIR = os.path.join(os.path.dirname(__file__), "nltk_data")
+    # nltk.data.path.append(NLTK_DIR)
     
     logger.info("Cloud Function triggered to run article pipeline.")
     try:
