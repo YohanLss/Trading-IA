@@ -15,7 +15,6 @@ from pydantic import BaseModel
 
 from models import Article
 from utils import function_timer2
-# from services.llm import gemini_client
 
 from utils.logger import logger
 

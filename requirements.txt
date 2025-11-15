@@ -17,3 +17,4 @@ functions-framework
 flask
 google-cloud-error-reporting
 MarkupSafe
+certifi
