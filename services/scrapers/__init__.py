@@ -7,3 +7,4 @@ from .ddg_news_scraper import DdgScraper
 from .newsapi_news_scraper import NewsApiScraper
 from .seekingalpha_news_scraper import SeekingAlphaScraper
 from .benzinga_news_scraper import BenzingaNewsScraper
+
