@@ -8,7 +8,7 @@ pipeline = ArticlePipelineController(article_limit=100, verify_db=True)
 
 def run_article_fetch_pipeline(request):
     """
-       HTTP Cloud Function entrypoint.
+       HTTP Cloud Function entrypoint
     """
     logger.info("Cloud Function triggered to run article pipeline.")
     try:
