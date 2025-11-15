@@ -19,4 +19,6 @@ def run_article_fetch_pipeline(request):
         logger.error("Error occurred during article pipeline run: %s", e)
         return f"error: {e}", 500
 
-run_article_fetch_pipeline(None)
+if __name__ == "__main__":
+
+    run_article_fetch_pipeline(None)
