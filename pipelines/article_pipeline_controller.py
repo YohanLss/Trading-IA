@@ -1,11 +1,10 @@
 # Pipeline for fetching articles and saving them in the database
 import time
 from datetime import datetime, timezone
-
 from bson import ObjectId
 
 from models import Article
-from services.scrapers import BaseScraper, MarketWatchScraper, YahooScraper, DdgScraper, NewsApiScraper, SeekingAlphaScraper
+from services.scrapers import BaseScraper, MarketWatchScraper, YahooScraper, DdgScraper, NewsApiScraper, SeekingAlphaScraper, BenzingaNewsScraper
 from utils import function_timer, logger, function_timer2
 from services.llm import gemini_client
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -18,7 +17,6 @@ class ArticlePipelineController:
         self.gemini_client = gemini_client
         self.article_db_service = article_service
         self.pipeline_db_service = pipeline_execution_service
-        
         llm = self.gemini_client if llm_summary else None
 
         self.configs = {
@@ -35,20 +33,19 @@ class ArticlePipelineController:
         # self.ddg_scraper = DdgScraper(**self.configs)
         self.newsapi_scraper = NewsApiScraper(**self.configs)
         self.seekingalpha_scraper = SeekingAlphaScraper(**self.configs)
-        
+        self.benzinga_scraper = BenzingaNewsScraper(**self.configs)
         self.active_scrapers = [
             self.yahoo_scraper,
             self.marketwatch_scraper,
             self.newsapi_scraper,
-            self.seekingalpha_scraper
+            self.seekingalpha_scraper,
+            self.benzinga_scraper,
         ]
     def fetch_latest_news_articles(self):
         articles : list[Article] = []
         if not self.asynchronous:
-            articles.extend(self.yahoo_scraper.scrape())
-            articles.extend(self.marketwatch_scraper.scrape())
-            # articles.extend(self.ddg_scraper.scrape())
-
+            for s in self.active_scrapers:
+                articles.extend(s.scrape())
         else:
             with ThreadPoolExecutor() as executor:
                 future_map = {executor.submit(s.scrape): s for s in self.active_scrapers}
@@ -64,6 +61,7 @@ class ArticlePipelineController:
         sorted_articles = sorted(articles, key=lambda article: article.publish_date or "", reverse=True)
         return sorted_articles
     
+    @function_timer
     def run(self):
         start_time = time.perf_counter()  # Use perf_counter for high-resolution timing
         pipeline_run_id = ObjectId()
@@ -115,12 +113,11 @@ class ArticlePipelineController:
         )
 
         now = datetime.now(timezone.utc)
-
         
 
 def main():
-    pipeline = ArticlePipelineController(article_limit=20, verify_db=True)
-    
+    pipeline = ArticlePipelineController(article_limit=100, verify_db=True)
+
     pipeline.run()
 
 if __name__ == "__main__":

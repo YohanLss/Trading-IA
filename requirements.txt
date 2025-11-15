@@ -12,3 +12,4 @@ nltk
 ddgs
 newsapi-python
 pymongo
+schedule
