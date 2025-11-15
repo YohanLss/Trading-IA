@@ -3,7 +3,7 @@ from utils.logger import logger
 
 logger.setLevel("DEBUG")
 
-pipeline = ArticlePipelineController(article_limit=100, verify_db=True)
+pipeline = ArticlePipelineController(article_limit=20, verify_db=True)
 
 
 def run_article_fetch_pipeline(request):
@@ -18,7 +18,3 @@ def run_article_fetch_pipeline(request):
     except Exception as e:
         logger.error("Error occurred during article pipeline run: %s", e)
         return f"error: {e}", 500
-
-
-
-run_article_fetch_pipeline(None)

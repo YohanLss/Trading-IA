@@ -13,3 +13,7 @@ ddgs
 newsapi-python
 pymongo
 schedule
+functions-framework
+flask
+google-cloud-error-reporting
+MarkupSafe

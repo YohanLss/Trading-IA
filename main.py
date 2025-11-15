@@ -5,6 +5,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from services.llm import gemini_client
+from main_cloud_functions import run_article_fetch_pipeline
 
 ARTICLE_LIMIT=2
 ASYNCHRONOUS = True

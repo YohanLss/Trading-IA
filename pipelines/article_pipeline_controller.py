@@ -116,7 +116,7 @@ class ArticlePipelineController:
         
 
 def main():
-    pipeline = ArticlePipelineController(article_limit=100, verify_db=True)
+    pipeline = ArticlePipelineController(article_limit=20, verify_db=True)
 
     pipeline.run()
 
