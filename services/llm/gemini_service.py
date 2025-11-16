@@ -2,13 +2,14 @@ from google import genai
 from google.genai import types
 from google.genai.types import GenerateContentConfig, CreateBatchJobConfig, GoogleSearch
 
+from services.scrapers import BaseScraper
 from utils import logger
 import os
 import json
 from typing import List, Optional
 import os
 from dotenv import load_dotenv
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from models import Article
 from utils.function_timer import function_timer
 
@@ -18,9 +19,15 @@ key = os.getenv("GEMINI_API_KEY")
 class LlmSummary(BaseModel):
     """
     Represents the expected JSON structure returned by the LLM summarization request.
-    Contains one optional 'summary' field.
     """
     summary: Optional[str] = None
+    tickers: Optional[List[str]] = None
+    sectors: Optional[List[str]] = None
+    keywords: Optional[List[str]] = None
+    sentiment: Optional[str] = Field(
+        default=None,
+        description="One of 'positive', 'negative', or 'neutral'."
+    )
 
 class GeminiService:
     """
@@ -89,18 +96,55 @@ class GeminiService:
         """
         Sends a summarization request for a single Article and returns a one-sentence summary.
         """
+        # Build a compact article payload
         article_dict = article.model_dump()
-        article_dict["summary"] = ""
-        sys_intruct = "You are a precise financial news assistant."
+        content = (article_dict.get("content") or "").strip()
+
+        # Truncate extremely long content to save tokens
+        max_chars = 6000
+        if len(content) > max_chars:
+            content = content[:max_chars]
+
+        article_payload = {
+            "title": article_dict.get("title"),
+            "content": content,
+            "publish_date": str(article_dict.get("publish_date", "")),
+            "url": article_dict.get("url"),
+        }
+        
+        sys_instruct = (
+            "You are a precise financial news assistant. "
+            "You MUST respond with a valid JSON object that matches the provided schema "
+            "(summary, tickers, sectors, keywords, sentiment). "
+            "If a field is unknown, use null or an empty list as appropriate."
+        )
+
         prompt_data = {
-            "Task": "Use one sentence to summarize the given article",
-            "Article": article_dict,
+            "task": "Summarize and tag the following financial news article.",
+            "requirements": [
+                "Write ONE concise sentence summary in English that captures the main news event.",
+                "Return all clearly mentioned stock tickers as uppercase strings (e.g. 'AAPL'). "
+                "If none are mentioned, use an empty list.",
+                "Return broad sectors affected by the news, such as 'Technology', 'Financials', 'Energy', "
+                "'Materials', 'Consumer Discretionary', etc. Use an empty list if unclear.",
+                "Return 3 to 8 important keywords (company names, instruments, events, deals, etc.).",
+                "Set sentiment to 'positive', 'negative', or 'neutral' from the perspective of the main company/asset."
+            ],
+            "article": article_payload,
         }
         payload = json.dumps(prompt_data, ensure_ascii=False, indent=2)
         schema = LlmSummary
+        try:
+            response: "LlmSummary" = self.send_request(prompt_data=payload, sys_instruct=sys_instruct, schema=schema)
+            
+        except Exception as e:
+            logger.error(f"Error in summarizing article: {e}")
+            return None
 
-        response = self.send_request(prompt_data=payload, sys_instruct=sys_intruct, schema=schema)
-        summary = response.summary
+        if response is None:
+            return None
+        
+        summary = response.model_dump()
 
         return summary
 
@@ -142,34 +186,40 @@ class GeminiService:
 def main():
     # yahoo_scraper = YahooScraper(limit=5, async_scrape=True)
     # print(yahoo_scraper.scrape())
-
-    fetched_articles = [Article(url='https://finance.yahoo.com/news/protesters-oppose-trump-policies-no-163411318.html',
-                                title='Protesters Oppose Trump Policies in ‘No Kings’ Events Across US',
-                                content='(Bloomberg) --Demonstrators across the US turned out for what organizers said would be as many as 2,700 “No Kings” protests in all 50 states to express their opposition to President Donald Trump’s agenda. Saturday’s mass protests follow similar “No Kings” protests on June 14, timed to offset the military parade Trump hosted the same day in Washington for the 250th anniversary of the US Army and his birthday. Organizers estimated that 4 million to 6 million people attended the June demonstrations. Most Read from Bloomberg Affordable Housing Left Vulnerable After Trump Fires Building Inspectors Los Angeles County Declares State of Emergency Over ICE Raids What Comes After the\xa0‘War on Cars’? NY Senator Behind Casino Push Urges Swift Awarding of Licenses Trump Floats San Francisco as Next Target for Crime Crackdown Protests are also planned in Western Europe. The US government has been shut down for 18 days as Senate Democrats and Republicans remain dug in over extending health care subsidies, a roadblock to a spending bill that would reopen the government. The protesters are trying to show public opposition to Trump’s push to send National Guard troops to US cities, his immigration raids and his cuts to foreign aid and domestic programs favored by Democrats. Most Read from Bloomberg Businessweek Inside the Credit Card Battle to Win America’s Richest Shoppers Robinhood Is Banking on Babies and 401(k)s to Get Everyone Trading NBA Commissioner Adam Silver Has a Steve Ballmer Problem on His Hands The Banker Behind the Trumps’ Quick Wall Street Wins Meet Polymarket’s $400 Million Man ©2025 Bloomberg L.P.',
-                                publish_date='2025-10-18 16:34:11+00:00', authors=['María Paula Mijares Torres'],
-                                summary='Demonstrators across the US turned out for what organizers said would be as many as 2,700 “No Kings” protests in all 50 states to express their opposition to President Donald Trump’s agenda.\nSaturday’s mass protests follow similar “No Kings” protests on June 14, timed to offset the military parade Trump hosted the same day in Washington for the 250th anniversary of the US Army and his birthday.\nOrganizers estimated that 4 million to 6 million people attended the June demonstrations.\nMost Read from Bloomberg Affordable Housing Left Vulnerable After Trump Fires Building Inspectors Los Angeles County Declares State of Emergency Over ICE Raids What Comes After the ‘War on Cars’?\nNY Senator Behind Casino Push Urges Swift Awarding of Licenses Trump Floats San Francisco as Next Target for Crime Crackdown Protests are also planned in Western Europe.'),
-                        Article(
-                            url='https://finance.yahoo.com/news/brexit-hurt-economy-foreseeable-future-162559450.html',
-                            title='Brexit will hurt economy for ‘foreseeable future’, claims Bailey',
-                            content='Andrew Bailey has claimed Brexit will hurt the economy for years to come. The Governor of the Bank of England said the impact would be “negative” for the “foreseeable future” as he warned thatputting up trade barriersalways damaged growth. While Mr Bailey stressed that he was not offering a personal view of Brexit, he said that years of low UK productivity had driven up debt. He added: “What’s the impact on economic growth? As a public official, I have to answer that question – and the answer is that, for the foreseeable future, it’s negative.” Speaking in Washington DC, Mr Bailey said the economy was adjusting slowly to new trading relationships with “some partial rebalancing” in trade already taking place. In a thinly-veiled jibe at Donald Trump, Mr Bailey also warned against erecting global trade barriers. “If you make the world economy less open, it will have an effect on growth. It will reduce growth over time,” he said. Mr Bailey added: “Longer term, you’ll get some adjustment. Trade does adjust. It does rebuild, and all the evidence we have from the UK is that is exactly what is happening.” His remarks came as the International Monetary Fund admitted this week that the steep tariff increases imposed by the US president had been less damaging than previously feared. Meanwhile, Britain’s position outside the EU has enabled it to negotiate lower tariffs with the world’s biggest economy. The EU currently faces a 15pc levy on most goods exported to the US, compared with the UK’s 10pc rate. However, Mr Bailey also warned that years of low productivity had pushed up debt. He calculated that if growth over the past 15 years had matched the average rate seen before the financial crisis, Britain’s debt-to-GDP ratio would now be 82pc instead of 96pc and would be below 80pc by the end of the decade. “That is a big difference,” he warned. Rachel Reeves is expected to blame Brexit in the Budget for theOffice for Budget Responsibility’s (OBR)widely expected decision to lower its long-term growth forecasts. Economists have warned that her record £40bn tax raid has driven up prices and stifled growth, with the Chancellor expected to raise taxes by another £30bn in her second Budget on Nov 26 tobalance the books. Mr Bailey suggested that the lower “speed limit” of the economy made it harder for the Bank to keep rates low because the economy was now more vulnerable to inflation: “Slower growth makes economic policymaking it much more difficult.” He warned of the risks posed from the rapid rise of private credit issued by non-banks, adding that policymakers would do more to “lift the lid” on the sector. Mr Bailey also suggested that policymakers were eyeing reforms that would makethe gilt marketless susceptible to financial stability risks. Separate analysis backed by Lord Cameron, the former prime minister, warned that Britain was in danger of losing its rich country status. Prosperity Through Growth, a new book by authors including former Ronald Reagan adviser Art Laffer and Australian businessman Lord Hintze, showed the average Lithuanian would have a higher living standard than the average Briton by the end of the decade. It also warned the UK would drop from being the 25th richest country in the world 25 years ago to the 46th richest by 2050. Lord Cameron said: “We’re in a situation of genteel decline – people just putting up with 1pc growth. We’re effectively getting poorer, but we’re pretending we aren’t, and we need to convince people it doesn’t have to be that way. But we need to convince people we’ve got a very clear plan.” Broaden your horizons with award-winning British journalism. Try The Telegraph free for 1 month with unlimited access to our award-winning website, exclusive app, money-saving offers and more.',
-                            publish_date='2025-10-18 16:25:59+00:00', authors=['Szu Ping Chan'],
-                            summary='Andrew Bailey has claimed Brexit will hurt the economy for years to come.\nWhile Mr Bailey stressed that he was not offering a personal view of Brexit, he said that years of low UK productivity had driven up debt.\nIn a thinly-veiled jibe at Donald Trump, Mr Bailey also warned against erecting global trade barriers.\nMr Bailey added: “Longer term, you’ll get some adjustment.\nMr Bailey also suggested that policymakers were eyeing reforms that would make the gilt market less susceptible to financial stability risks.'),
-                        ]
-    # # print(len(fetched_articles))
+    # base_scraper = BaseScraper()
+    # articles = base_scraper.scrape(manual_fetch=True, urls=["https://www.benzinga.com/markets/tech/25/11/48886445/mark-zuckerberg-uses-an-unusual-hiring-rule-at-meta-and-it-starts-with-one-question-he-asks-himself-how-do-you-know-that-someone-is-good-enough"])
+    # print(articles)
+    # fetched_articles = [Article(url='https://finance.yahoo.com/news/protesters-oppose-trump-policies-no-163411318.html',
+    #                             title='Protesters Oppose Trump Policies in ‘No Kings’ Events Across US',
+    #                             content='(Bloomberg) --Demonstrators across the US turned out for what organizers said would be as many as 2,700 “No Kings” protests in all 50 states to express their opposition to President Donald Trump’s agenda. Saturday’s mass protests follow similar “No Kings” protests on June 14, timed to offset the military parade Trump hosted the same day in Washington for the 250th anniversary of the US Army and his birthday. Organizers estimated that 4 million to 6 million people attended the June demonstrations. Most Read from Bloomberg Affordable Housing Left Vulnerable After Trump Fires Building Inspectors Los Angeles County Declares State of Emergency Over ICE Raids What Comes After the\xa0‘War on Cars’? NY Senator Behind Casino Push Urges Swift Awarding of Licenses Trump Floats San Francisco as Next Target for Crime Crackdown Protests are also planned in Western Europe. The US government has been shut down for 18 days as Senate Democrats and Republicans remain dug in over extending health care subsidies, a roadblock to a spending bill that would reopen the government. The protesters are trying to show public opposition to Trump’s push to send National Guard troops to US cities, his immigration raids and his cuts to foreign aid and domestic programs favored by Democrats. Most Read from Bloomberg Businessweek Inside the Credit Card Battle to Win America’s Richest Shoppers Robinhood Is Banking on Babies and 401(k)s to Get Everyone Trading NBA Commissioner Adam Silver Has a Steve Ballmer Problem on His Hands The Banker Behind the Trumps’ Quick Wall Street Wins Meet Polymarket’s $400 Million Man ©2025 Bloomberg L.P.',
+    #                             publish_date='2025-10-18 16:34:11+00:00', authors=['María Paula Mijares Torres'],
+    #                             summary='Demonstrators across the US turned out for what organizers said would be as many as 2,700 “No Kings” protests in all 50 states to express their opposition to President Donald Trump’s agenda.\nSaturday’s mass protests follow similar “No Kings” protests on June 14, timed to offset the military parade Trump hosted the same day in Washington for the 250th anniversary of the US Army and his birthday.\nOrganizers estimated that 4 million to 6 million people attended the June demonstrations.\nMost Read from Bloomberg Affordable Housing Left Vulnerable After Trump Fires Building Inspectors Los Angeles County Declares State of Emergency Over ICE Raids What Comes After the ‘War on Cars’?\nNY Senator Behind Casino Push Urges Swift Awarding of Licenses Trump Floats San Francisco as Next Target for Crime Crackdown Protests are also planned in Western Europe.'),
+    #                     Article(
+    #                         url='https://finance.yahoo.com/news/brexit-hurt-economy-foreseeable-future-162559450.html',
+    #                         title='Brexit will hurt economy for ‘foreseeable future’, claims Bailey',
+    #                         content='Andrew Bailey has claimed Brexit will hurt the economy for years to come. The Governor of the Bank of England said the impact would be “negative” for the “foreseeable future” as he warned thatputting up trade barriersalways damaged growth. While Mr Bailey stressed that he was not offering a personal view of Brexit, he said that years of low UK productivity had driven up debt. He added: “What’s the impact on economic growth? As a public official, I have to answer that question – and the answer is that, for the foreseeable future, it’s negative.” Speaking in Washington DC, Mr Bailey said the economy was adjusting slowly to new trading relationships with “some partial rebalancing” in trade already taking place. In a thinly-veiled jibe at Donald Trump, Mr Bailey also warned against erecting global trade barriers. “If you make the world economy less open, it will have an effect on growth. It will reduce growth over time,” he said. Mr Bailey added: “Longer term, you’ll get some adjustment. Trade does adjust. It does rebuild, and all the evidence we have from the UK is that is exactly what is happening.” His remarks came as the International Monetary Fund admitted this week that the steep tariff increases imposed by the US president had been less damaging than previously feared. Meanwhile, Britain’s position outside the EU has enabled it to negotiate lower tariffs with the world’s biggest economy. The EU currently faces a 15pc levy on most goods exported to the US, compared with the UK’s 10pc rate. However, Mr Bailey also warned that years of low productivity had pushed up debt. He calculated that if growth over the past 15 years had matched the average rate seen before the financial crisis, Britain’s debt-to-GDP ratio would now be 82pc instead of 96pc and would be below 80pc by the end of the decade. “That is a big difference,” he warned. Rachel Reeves is expected to blame Brexit in the Budget for theOffice for Budget Responsibility’s (OBR)widely expected decision to lower its long-term growth forecasts. Economists have warned that her record £40bn tax raid has driven up prices and stifled growth, with the Chancellor expected to raise taxes by another £30bn in her second Budget on Nov 26 tobalance the books. Mr Bailey suggested that the lower “speed limit” of the economy made it harder for the Bank to keep rates low because the economy was now more vulnerable to inflation: “Slower growth makes economic policymaking it much more difficult.” He warned of the risks posed from the rapid rise of private credit issued by non-banks, adding that policymakers would do more to “lift the lid” on the sector. Mr Bailey also suggested that policymakers were eyeing reforms that would makethe gilt marketless susceptible to financial stability risks. Separate analysis backed by Lord Cameron, the former prime minister, warned that Britain was in danger of losing its rich country status. Prosperity Through Growth, a new book by authors including former Ronald Reagan adviser Art Laffer and Australian businessman Lord Hintze, showed the average Lithuanian would have a higher living standard than the average Briton by the end of the decade. It also warned the UK would drop from being the 25th richest country in the world 25 years ago to the 46th richest by 2050. Lord Cameron said: “We’re in a situation of genteel decline – people just putting up with 1pc growth. We’re effectively getting poorer, but we’re pretending we aren’t, and we need to convince people it doesn’t have to be that way. But we need to convince people we’ve got a very clear plan.” Broaden your horizons with award-winning British journalism. Try The Telegraph free for 1 month with unlimited access to our award-winning website, exclusive app, money-saving offers and more.',
+    #                         publish_date='2025-10-18 16:25:59+00:00', authors=['Szu Ping Chan'],
+    #                         summary='Andrew Bailey has claimed Brexit will hurt the economy for years to come.\nWhile Mr Bailey stressed that he was not offering a personal view of Brexit, he said that years of low UK productivity had driven up debt.\nIn a thinly-veiled jibe at Donald Trump, Mr Bailey also warned against erecting global trade barriers.\nMr Bailey added: “Longer term, you’ll get some adjustment.\nMr Bailey also suggested that policymakers were eyeing reforms that would make the gilt market less susceptible to financial stability risks.'),
+    #                     ]
+    
+    fetched_articles = [Article(url='https://www.benzinga.com/markets/tech/25/11/48886445/mark-zuckerberg-uses-an-unusual-hiring-rule-at-meta-and-it-starts-with-one-question-he-asks-himself-how-do-you-know-that-someone-is-good-enough', title="Mark Zuckerberg Uses An Unusual Hiring Rule At Meta — And It Starts With One Question He Asks Himself: 'How Do You Know That Someone Is Good Enough?' - Meta Platforms (NASDAQ:META)", content='Mark Zuckerberg once offered a rare look into how he decides who gets hired at Meta Platforms, Inc. (NASDAQ:META) — and it all hinges on a personal test that flips the traditional hiring process on its head. A Hiring Rule Built Around One Unusual Question During a 2022 conversation on the Lex Fridman Podcast, Zuckerberg said that when evaluating candidates, he turns to a simple but unexpected question: Would I work for this person in an alternate universe? Zuckerberg explained that he uses this as a gut-check on whether a candidate has the judgment, values and capability he wants on his team. "I will only hire someone to work for me if I could see myself working for them," he said, clarifying that it isn\'t about handing over the company but about whether the person is someone he could genuinely learn from. "There’s this question of, okay, how do you know that someone is good enough? And I think my answer is I would want someone to be on my team if I would work for them," he explained. See Also: Rory Sutherland Reveals The One Thought Pattern That Sets Jeff Bezos (And Elon Musk) Apart From Everyone Else In Business You Become Like the People You Surround Yourself With: Zuckerberg The Meta CEO said young people — especially those graduating from college — underestimate how much their inner circle shapes their future. He believes this rule applies just as much to choosing friends, mentors and colleagues as it does to hiring. People are too "objective-focused," he said, urging young adults to prioritize relationships over rigid goals. According to Zuckerberg, the right people challenge you, expand your thinking and push you toward who you want to become. Subscribe to the Benzinga Tech Trends newsletter to get all the latest tech developments delivered to your inbox. Bezos, Buffett, Musk And Jobs Say Hiring Talent Is Key To Long-Term Success Amazon.com founder Jeff Bezos has also long stressed hiring exceptional talent. In a 1998 interview, Bezos revealed that he devoted a third of job interviews to assessing whether candidates could themselves attract top performers — a skill he saw as crucial to Amazon\'s growth and execution. In a 1998 talk with MBA students at the University of Florida, Warren Buffett said he looks for integrity, intelligence and energy when hiring. He later noted during a 2021 shareholder meeting that ineffective management poses the greatest threat to a company, according to the Wall Street Journal. Tesla CEO Elon Musk has expressed views similar to Steve Jobs\', stressing that success depends on hiring exceptional talent and choosing strong managers. Jobs, too, often highlighted the value of selecting the right people, noting that the best managers are usually standout individual contributors who step up because they know the job must be done well. Benzinga’s Edge Stock Rankings show that META has been trending downward over the short, medium and long term. More performance insights can be found here. Check out more of Benzinga\'s Consumer Tech coverage by following this link. Read More: Tesla Investor Ross Gerber Says ‘Super Sad\' To See Federal EV Subsidies End: ‘Credits Created…\' Disclaimer: This content was partially produced with the help of AI tools and was reviewed and published by Benzinga editors. Photo Courtesy: Kemarrravv13 via Shutterstock.com', publish_date='2025-11-15 14:00:43-05:00', authors=['Ananya Gairola'], summary="Mark Zuckerberg once offered a rare look into how he decides who gets hired at Meta Platforms, Inc. (NASDAQ:META) — and it all hinges on a personal test that flips the traditional hiring process on its head.\nHe believes this rule applies just as much to choosing friends, mentors and colleagues as it does to hiring.\nAccording to Zuckerberg, the right people challenge you, expand your thinking and push you toward who you want to become.\nBezos, Buffett, Musk And Jobs Say Hiring Talent Is Key To Long-Term Success Amazon.com founder Jeff Bezos has also long stressed hiring exceptional talent.\nTesla CEO Elon Musk has expressed views similar to Steve Jobs', stressing that success depends on hiring exceptional talent and choosing strong managers.", keyword=None, sectors=None, keywords=None, sentiment=None, tickers=None)]
+    # article = fetched_articles[0]
+    
+    # print((fetched_articles))
     service = GeminiService(api_key=key)
     # # print(service.send_text_request("Hi what's up?"))
     # 
     print(service.summarize_article(fetched_articles[0]))
-    # summary = service.summarize_article(fetched_articles[0])
-    # print(summary)
+    summary = service.summarize_article(fetched_articles[0])
+    print(summary)
     
 if __name__ == "__main__":
     load_dotenv()
 
     key = os.getenv("GEMINI_API_KEY")
-    # main()
+    main()
     
-    client = GeminiService(api_key=key)
-    client.chat_session()
-    
+    # client = GeminiService(api_key=key)
+    # client.chat_session()
+    # 
 

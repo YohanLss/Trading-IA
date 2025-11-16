@@ -11,3 +11,7 @@ class Article(BaseModel):
     authors: Optional[List[str]] = None
     summary: Optional[str] = None,
     keyword: Optional[str] = None
+    sectors: Optional[List[str]] = None
+    keywords: Optional[List[str]] = None
+    sentiment: Optional[str] = None
+    tickers: Optional[List[str]] = None

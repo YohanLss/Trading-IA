@@ -78,12 +78,9 @@ class SeekingAlphaScraper(BaseScraper):
     def get_article_links(self) -> List[str]:
         url = self._build_news_url(page_size=self.limit)
         payload = self._fetch_json(url)
-        print(payload)
         if not payload or "data" not in payload or not isinstance(payload["data"], list):
             # handle fallback or just return empty list
-            print("Error fetching data from Seeking Alpha.")
             return []
-        print(f"fetched {len(payload['data'])} articles")
         headlines = [headline for headline in payload["data"]]
         return [self.base_url+item.get("links", {}).get("self", "") for item in payload["data"] if isinstance(item, dict)]
 
@@ -126,7 +123,9 @@ class SeekingAlphaScraper(BaseScraper):
         )
         
         try:
-            article.summary = self.gemini_client.summarize_article(article)
+            update = self.gemini_client.summarize_article(article)
+            if update:
+                article = article.model_copy(update=update)
         except Exception as e:
             article.summary = news_article.summary
         

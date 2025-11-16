@@ -86,7 +86,9 @@ class YahooScraper(BaseScraper):
         )
 
         try:
-            article.summary = self.gemini_client.summarize_article(article)
+            update = self.gemini_client.summarize_article(article)
+            if update:
+                article = article.model_copy(update=update)
         except Exception as e:
             article.summary = news_article.summary
 
