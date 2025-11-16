@@ -1,5 +1,5 @@
 from models import Article
-from services.scrapers import BaseScraper, MarketWatchScraper, YahooScraper, DdgScraper
+from services.scrapers import BaseScraper, MarketWatchScraper, YahooScraper, DdgScraper, France24Scraper
 from utils import function_timer, logger
 import threading
 import time
@@ -15,6 +15,7 @@ yahoo_scraper = YahooScraper(limit=ARTICLE_LIMIT, async_scrape=ASYNCHRONOUS, gem
 marketwatch_scraper = MarketWatchScraper(limit=ARTICLE_LIMIT, async_scrape=ASYNCHRONOUS, gemini_client=llm)
 base_scraper = BaseScraper(limit=ARTICLE_LIMIT, async_scrape=ASYNCHRONOUS, gemini_client=llm)
 ddg_scraper = DdgScraper(limit=ARTICLE_LIMIT, async_scrape=ASYNCHRONOUS, gemini_client=llm)
+france24_scraper = France24Scraper(limit=ARTICLE_LIMIT, async_scrape=ASYNCHRONOUS, gemini_client=llm)
 @function_timer
 def fetch_ddg_news():
     from ddgs import DDGS
@@ -40,6 +41,7 @@ def fetch_latest_news():
         articles.extend(yahoo_scraper.scrape())
         articles.extend(marketwatch_scraper.scrape())
         articles.extend(ddg_scraper.scrape())
+        articles.extend(france24_scraper.scrape())
 
     else:
         with ThreadPoolExecutor() as executor:
@@ -48,6 +50,7 @@ def fetch_latest_news():
                 executor.submit(yahoo_scraper.scrape),
                 executor.submit(marketwatch_scraper.scrape),
                 executor.submit(ddg_scraper.scrape),
+                executor.submit(france24_scraper.scrape),
 
             ]
             for t in threads:
