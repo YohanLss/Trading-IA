@@ -4,7 +4,7 @@ root = os.path.dirname(os.path.abspath(__file__))
 download_dir = os.path.join(root, 'nltk_data')
 os.chdir(download_dir)
 nltk.data.path.append(download_dir)
-
+paths = nltk.data.path
 from .marketwatch_news_scraper import MarketWatchScraper
 from .yahoo_news_scraper import YahooScraper
 from .base_news_scraper import BaseScraper

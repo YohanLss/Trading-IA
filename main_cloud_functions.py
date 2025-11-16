@@ -3,8 +3,9 @@ from utils.logger import logger
 import os
 logger.setLevel("DEBUG")
 
-pipeline = ArticlePipelineController(article_limit=20, verify_db=True)
-
+pipeline = ArticlePipelineController(article_limit=10, verify_db=True, asynchronous=True)
+import nltk 
+import os
 
 def run_article_fetch_pipeline(request):
     """
