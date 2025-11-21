@@ -1,7 +1,7 @@
 from google import genai
 from google.genai import types
 from google.genai.types import GenerateContentConfig, CreateBatchJobConfig, GoogleSearch
-
+from .system_instructions import *
 from services.scrapers import BaseScraper
 from utils import logger
 import os
@@ -39,10 +39,10 @@ class GeminiService:
         Initializes the Gemini API client using the provided API key.
         """
         self.client = genai.Client(api_key=api_key)
-        if not self.client_is_initalized():
+        if not self.client_is_initialized():
             self.client = None
 
-    def client_is_initalized(self):
+    def client_is_initialized(self):
         """
         Tests whether the Gemini client can successfully communicate with the API.
         Returns True if initialization is successful, False otherwise.
@@ -60,7 +60,14 @@ class GeminiService:
         except Exception as e:
             logger.warning(f"Failed to initialize Gemini API: {e}")
             return False
+    
+    def generate_embeddings(self, data: Optional[str|List[str]]):
+        result = self.client.models.embed_content(
+            model="gemini-embedding-001",
+            contents=data)
 
+        return result.embeddings
+    
     def send_request(self, prompt_data, sys_instruct: str = "", schema=None):
         """
         Sends a prompt with optional system instructions and schema to the Gemini API.
@@ -158,16 +165,22 @@ class GeminiService:
         res = self.send_request(prompt_data=message, sys_instruct="You are a helpful assistant.")
         return res
     
-    def chat_session(self):
+    def chat_session(self, tools=None, google_search=False):
+        if tools is None:
+            tools = []
+        additional_instruct ="\n\nHere are the latest financial articles that are in the database.\n\n"
         chat = self.client.chats.create(model="gemini-2.5-flash")
         # client = genai.Client()
 
         grounding_tool = types.Tool(
             google_search=types.GoogleSearch()
         )
-
+        if google_search:
+            tools = [grounding_tool]
+            
         config = types.GenerateContentConfig(
-            tools=[grounding_tool]
+            tools=tools
+            , system_instruction=financial_agent_sys_instruct
         )
 
         while True:
@@ -175,8 +188,9 @@ class GeminiService:
             if user_input == "exit":
                 break
             response = chat.send_message(user_input, config=config)
-            print(response.text)
-
+            text = response.text
+            print(text)
+            pass
 
         for message in chat.get_history():
             print(f'role - {message.role}', end=": ")

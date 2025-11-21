@@ -1,4 +1,6 @@
 from __future__ import annotations
+from typing import Literal
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import time
 from datetime import datetime, timezone, timedelta
@@ -97,7 +99,62 @@ class YahooStockMarket:
             fiftyTwoWeekHigh=info.get("fiftyTwoWeekHigh") or fast_info.get("year_high"),
             fiftyTwoWeekLow=info.get("fiftyTwoWeekLow") or fast_info.get("year_low"),
         )
+    PeriodInterval = Literal["1m", "1h", "1d", "1w", "1mo"]
+    
+    def get_multiple_stock_df(
+            self,
+            ticker_symbols: list[str],
+            interval: PeriodInterval = "1d",
+            length: int = 10,
+    ):
+        df_set = {}
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            fut_map = {pool.submit(self.get_stock_df, ticker_symbol=ticker_symbol, interval=interval, length=length): (i, ticker_symbol) for i, ticker_symbol in enumerate(ticker_symbols)}
+            for fut in as_completed(fut_map):
+                i, ticker_symbol = fut_map[fut]
+                try:
+                    df = fut.result()
+                    if df is not None:
+                        df_set[ticker_symbols[i]] = df
+                except Exception as e:
+                    logger.warning("Worker failed for %s: %s", ticker_symbol, e)
+        
+        return df_set
+        
+    def get_stock_df(
+            self,
+            ticker_symbol: str,
+            interval: PeriodInterval = "1d",
+            length: int = 10,
+    ):
+        ticker = yf.Ticker(ticker_symbol)
+        end_time = datetime.now(timezone.utc)
 
+        interval_map = {
+            "1m": timedelta(minutes=length),
+            "1h": timedelta(hours=length),
+            "1d": timedelta(days=length),
+            "1w": timedelta(weeks=length),
+            "1mo": timedelta(days=30 * length),
+        }
+
+        start_time = end_time - interval_map[interval]
+
+        try:
+            df = ticker.history(
+                start=start_time,
+                end=end_time,
+                interval=interval,
+                auto_adjust=self.auto_adjust,
+                actions=False,
+                prepost=False,
+            )
+        except Exception as exc:  # pragma: no cover - remote errors
+            logger.error("Unable to fetch %s history via yfinance: %s", symbol, exc)
+            return None
+        
+        return df
+        
     @function_timer
     def get_stock_history(
         self,
@@ -164,7 +221,10 @@ class YahooStockMarket:
         candles = self._dataframe_to_candles(session_df)
         length = len(candles)
         return candles
-
+    
+    def get_momentum(self):
+        pass
+    
     def get_most_active_symbols(self, count: int = 200) -> List[Dict[str, Optional[str]]]:
         try:
             result = yf.screen("most_actives", count=count)

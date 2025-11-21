@@ -47,7 +47,7 @@ class ArticlePipelineController:
         self.active_scrapers = [
             self.yahoo_scraper,
             self.marketwatch_scraper,
-            self.newsapi_scraper,
+            # self.newsapi_scraper,
             self.seekingalpha_scraper,
             self.benzinga_scraper,
             # self.france24_scraper,

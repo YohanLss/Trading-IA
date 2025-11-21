@@ -9,7 +9,7 @@ from typing import Dict, List
 
 from pymongo import MongoClient, UpdateOne, DESCENDING, ASCENDING
 from models import Article
-
+from services.llm import gemini_client
 from utils import function_timer
 
 class ArticleService:
@@ -21,20 +21,54 @@ class ArticleService:
         
         db.articles.create_index([("url", ASCENDING)], name="uniq_url", unique=True)
 
+        db.articles.create_index(
+            [
+                ("title", "text"),
+                ("content", "text"),
+                ("summary", "text"),
+            ],
+            name="article_text_index",
+        )
+        
         self.collection = db.articles
-
-    def get_articles(self, filter: Dict | None = None, sorting: Dict | None = None) -> List[Article]:
+        
+    @staticmethod
+    def _get_embedding(text: str) -> List[float]:
+        return gemini_client.generate_embeddings(text)
+    
+    @staticmethod
+    def build_article_text(article: Article) -> str:
+        parts = [
+            article.title or "",
+            article.summary or "",
+            (article.content or "")[:2000],
+        ]
+        return "\n\n".join(p for p in parts if p)
+    
+    def get_articles(
+            self,
+            filter: Dict | None = None,
+            sorting: Dict | None = None,
+            limit: int | None = None,
+            projection: Dict | None = None
+    ) -> List[Article]:
         filter = filter or {}
         sorting = sorting or {"created_at": DESCENDING, "publish_date": DESCENDING}
-
-        # build pymongo sort list: [("created_at", -1), ("publish_date", -1)]
+        projection = projection or {}
+        projection["embedding"] = False
+        
         sort_list = [(k, v) for k, v in sorting.items()]
-        
-        res = list(self.collection.find(filter=filter, sort=sort_list))
-        
-        articles = [Article(**doc) for doc in res]
-            
-        return articles
+
+        cursor = self.collection.find(
+            filter=filter,
+            projection=projection
+        ).sort(sort_list)
+
+        if limit is not None:
+            cursor = cursor.limit(limit)
+
+        docs = list(cursor)
+        return [Article(**doc) for doc in docs]
     
     def url_exists_in_db(self, url: str):
         try:
@@ -99,8 +133,54 @@ class ArticleService:
             "inserted_ids": inserted_ids
         }
 
+    def generate_missing_embeddings(self):
+        # articles = list(self.collection.find({"embedding": None}))
+        articles = self.get_articles(filter={"embedding": None})
+        if articles is None:
+            return
+        print(f"Generating embeddings for {len(articles)} articles")
+        texts = [self.build_article_text(art) for art in articles]
+        print(f"Generated {len(texts)} article texts")
         
-    
+        embeddings = []
+        count = 0
+        while count <= len(texts) -1:
+            texts_batch = texts[count:count+100]
+            batch = gemini_client.generate_embeddings(texts_batch)
+            embeddings += [embedding.values for embedding in batch]
+            count += 100
+            print(f"Batch {count} done")
+        print(f"Generated {len(embeddings)} embeddings")
+
+        for i, art in enumerate(articles):
+            self.collection.update_one(
+                {"url": art.url},
+                {"$set": {"embedding": embeddings[i]}},
+            )
+            
+    def remove_embedding_field(self):
+        result = self.collection.update_many(
+            {},  # Empty filter to affect all documents
+            {'$unset': {'embedding': 1}}
+        )
+
+        print(f"Matched {result.matched_count} document(s) and modified {result.modified_count} document(s).")
+
+        # for art in articles:
+        #     text = build_article_text(art)
+        #     if not text.strip():
+        #         continue
+        # 
+        #     # Example with OpenAI style API, adapt to your client
+        #     emb = openai_client.get_embedding(text)  # returns list[float]
+        # 
+        #     article_service.collection.update_one(
+        #         {"url": art.url},
+        #         {"$set": {"embedding": emb}},
+        #     )
+
+        
+
     
 def main():
     def fetch_yahoo_articles():
@@ -146,10 +226,7 @@ if __name__ == "__main__":
         # fetched_articles = fetch_yahoo_articles()
 
         article_service = ArticleService()
-
-        # print(article_service.insert_many_articles(fetched_articles))
-        db_articles = article_service.get_articles()
-        print(db_articles)
+        article_service.remove_embedding_field()
         pass
         
     main()
