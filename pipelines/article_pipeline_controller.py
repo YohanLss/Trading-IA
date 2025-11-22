@@ -68,7 +68,7 @@ class ArticlePipelineController:
                             articles.extend(result)
                     except Exception as e:
                         logger.exception("Scraper %s failed async: %s", type(s).__name__, e)
-
+        # final_list = [article for article in articles if article.tickers is not None and len(article.tickers)>0]
         sorted_articles = sorted(articles, key=lambda article: article.publish_date or "", reverse=True)
         return sorted_articles
     

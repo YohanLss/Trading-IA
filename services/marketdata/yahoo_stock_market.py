@@ -8,8 +8,10 @@ from typing import List, Optional, Dict
 
 import pandas as pd
 import yfinance as yf
+from click import DateTime
 from pydantic import BaseModel
 
+from services.database import untracked_symbols_service
 from utils import function_timer, logger
 
 
@@ -106,10 +108,12 @@ class YahooStockMarket:
             ticker_symbols: list[str],
             interval: PeriodInterval = "1d",
             length: int = 10,
+            end_time=None,
+            prepost=False,
     ):
         df_set = {}
         with ThreadPoolExecutor(max_workers=6) as pool:
-            fut_map = {pool.submit(self.get_stock_df, ticker_symbol=ticker_symbol, interval=interval, length=length): (i, ticker_symbol) for i, ticker_symbol in enumerate(ticker_symbols)}
+            fut_map = {pool.submit(self.get_stock_df, ticker_symbol=ticker_symbol, interval=interval, length=length, end_time=end_time, prepost=prepost): (i, ticker_symbol) for i, ticker_symbol in enumerate(ticker_symbols)}
             for fut in as_completed(fut_map):
                 i, ticker_symbol = fut_map[fut]
                 try:
@@ -126,9 +130,13 @@ class YahooStockMarket:
             ticker_symbol: str,
             interval: PeriodInterval = "1d",
             length: int = 10,
+            end_time = None,
+            prepost=False,
+
     ):
         ticker = yf.Ticker(ticker_symbol)
-        end_time = datetime.now(timezone.utc)
+        if end_time is None:
+            end_time = datetime.now(timezone.utc)
 
         interval_map = {
             "1m": timedelta(minutes=length),
@@ -147,10 +155,15 @@ class YahooStockMarket:
                 interval=interval,
                 auto_adjust=self.auto_adjust,
                 actions=False,
-                prepost=False,
+                prepost=prepost,
             )
         except Exception as exc:  # pragma: no cover - remote errors
-            logger.error("Unable to fetch %s history via yfinance: %s", symbol, exc)
+            try:
+                self.get_stock_info(symbol=ticker_symbol)
+            except Exception:
+                untracked_symbols_service.add_untracked_symbols([ticker_symbol])
+
+            logger.error("Unable to fetch %s history via yfinance: %s", ticker_symbol, exc)
             return None
         
         return df
@@ -162,11 +175,17 @@ class YahooStockMarket:
         days: int = 7,
         interval: str = "1d",
         return_df: bool = False,
+        start_time = None, end_time = None,
+            prepost = False,
     ) -> Optional[List[MarketCandle]|pd.DataFrame]:
         
         ticker = yf.Ticker(symbol)
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=days)
+        if start_time and end_time:
+            end = end_time
+            start = start_time
+        else:
+            end = datetime.now(timezone.utc)
+            start = end - timedelta(days=days)
 
         try:
             df = ticker.history(
@@ -175,7 +194,7 @@ class YahooStockMarket:
                 interval=interval,
                 auto_adjust=self.auto_adjust,
                 actions=False,
-                prepost=False,
+                prepost=prepost,
             ) 
         except Exception as exc:  # pragma: no cover - remote errors
             logger.error("Unable to fetch %s history via yfinance: %s", symbol, exc)
@@ -294,4 +313,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     # continuous_fetch(delay_seconds=0.5)
-    main()
+    # main()
+    print(YahooStockMarket().get_stock_info("$BRK"))

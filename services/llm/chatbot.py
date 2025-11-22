@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Any
 import math
 import pandas as pd
 from services.marketdata import YahooStockMarket
+import numpy as np
 
 from services.llm import gemini_client
 from services.marketdata import YahooStockMarket
@@ -317,7 +318,7 @@ def rag_search_articles(query: str, days_back: int = 7, limit: int = 10) -> list
     return results
 
 @function_timer
-def get_tickers(hours_back: int = 24):
+def get_tickers(hours_back: int = 4):
     now = datetime.now(timezone.utc)
     start = now - timedelta(hours=hours_back)
     start_str = start.strftime("%Y-%m-%d 00:00:00")
@@ -345,6 +346,7 @@ def get_tickers(hours_back: int = 24):
                         '_id': '$_id',
                         'title': '$title',
                         'url': '$url',
+                        'created_at': '$created_at',
                         'publish_date': '$publish_date',
                         'sentiment': '$sentiment',
                         'authors': '$authors',
@@ -362,6 +364,7 @@ def get_tickers(hours_back: int = 24):
                                 '_id': '$_id',
                                 'title': '$title',
                                 'url': '$url',
+                                'created_at': '$created_at',
                                 'publish_date': '$publish_date',
                                 'sentiment': '$sentiment'
                             }, '$Remove'
@@ -379,6 +382,7 @@ def get_tickers(hours_back: int = 24):
                                 '_id': '$_id',
                                 'title': '$title',
                                 'url': '$url',
+                                'created_at': '$created_at',
                                 'publish_date': '$publish_date',
                                 'sentiment': '$sentiment'
                             }, '$Remove'
@@ -396,6 +400,7 @@ def get_tickers(hours_back: int = 24):
                                 '_id': '$_id',
                                 'title': '$title',
                                 'url': '$url',
+                                'created_at': '$created_at',
                                 'publish_date': '$publish_date',
                                 'sentiment': '$sentiment'
                             }, '$Remove'
@@ -424,7 +429,7 @@ def get_tickers(hours_back: int = 24):
     # articles = article_service.collection.find()
     res = list(article_service.collection.aggregate(pipeline))
     untracked_symbols = untracked_symbols_service.get_untracked_symbols()
-    
+    res = res[:]
     tickers = [r for r in res if r.get("ticker") not in untracked_symbols]
     
     symbols = [r.get("ticker") for r in tickers]
@@ -437,7 +442,34 @@ def get_tickers(hours_back: int = 24):
         negative_count = len(r.get("negative_articles"))
         
         symbol_df = symbols_dfs[r.get("ticker")]
+        created_at = r.get("")
+        symbol_score = 0
+        coefficient = 0.02 
+        for article in r.get("positive_articles"):
+            created_at = article.get("created_at").replace(tzinfo=timezone.utc)
+            print(created_at)
+            age = (now - created_at).total_seconds() / 60
+            weight = math.exp(-age * coefficient)
+            
+            symbol_score += weight
+
+        # for article in r.get("neutral_articles"):
+        #     created_at = article.get("created_at").replace(tzinfo=timezone.utc)
+        #     print(created_at)
+        #     age = (now - created_at).total_seconds() / 60
+        #     weight = math.exp(-age * coefficient)*0.5
+        # 
+        #     symbol_score += weight
+            
+        for article in r.get("negative_articles"):
+            created_at = article.get("created_at").replace(tzinfo=timezone.utc)
+            print(created_at)
+            age = (now - created_at).total_seconds() / 60
+            weight = math.exp(-age * coefficient)
+
+            symbol_score -= weight
         
+        r["symbol_score"] = round(symbol_score/ article_count, 3)
         r["neutral_count"] = neutral_count
         r["positive_count"] = positive_count
         r["negative_count"] = negative_count
@@ -462,12 +494,17 @@ def get_tickers(hours_back: int = 24):
             "negative_sentiment": r.get("negative_percent"),
             "neutral_sentiment": r.get("neutral_percent"),
             "weighted_sentiment_score": (r.get("positive_percent") - r.get("negative_percent"))*math.log(r.get("count")),
+            "symbol_score": r.get("symbol_score")*math.log(1+ r.get("count")),
             "return": r.get("return")
         }
         for r in tickers
     ])
     
-    df = df.sort_values(by="weighted_sentiment_score", ascending=False)
+    # df["score"] = df["weighted_sentiment_score"] * math.log(1+ df["return"])
+    df["score"] = df["weighted_sentiment_score"] * df["return"]
+    df["score2"] = df["symbol_score"] * df["return"]
+
+    df = df.sort_values(by="score", ascending=False)
 
     print(df)
     return tickers
@@ -476,7 +513,7 @@ def get_tickers(hours_back: int = 24):
 
 # df= YahooStockMarket().get_stock_period_return(ticker_symbol="AAPL", interval="1d", length=10)
 # df_list= YahooStockMarket().get_multiple_stock_df(ticker_symbols=["AAPL", "META"], interval="1d", length=10)
-tickers = get_tickers()
+tickers = get_tickers(24)
 # print("more than 1", len([t for t in tickers if t.get("count")>1]))
 # pass
 
