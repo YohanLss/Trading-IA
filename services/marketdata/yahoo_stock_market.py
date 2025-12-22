@@ -159,7 +159,7 @@ class YahooStockMarket:
             )
         except Exception as exc:  # pragma: no cover - remote errors
             try:
-                self.get_stock_info(symbol=ticker_symbol)
+                res = self.get_stock_info(symbol=ticker_symbol)
             except Exception:
                 untracked_symbols_service.add_untracked_symbols([ticker_symbol])
 

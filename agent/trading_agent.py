@@ -185,8 +185,7 @@ def get_tickers(hours_back: int = 4, now=None, symbol_filter=None):
             "positive_sentiment": r.get("positive_percent"),
             "negative_sentiment": r.get("negative_percent"),
             "neutral_sentiment": r.get("neutral_percent"),
-            "weighted_sentiment_score": (r.get("positive_percent") - r.get("negative_percent")) * math.log(
-                r.get("count")),
+            "weighted_sentiment_score": (r.get("positive_percent") - r.get("negative_percent")) * math.log(1 + r.get("count")),
             "symbol_score": r.get("symbol_score") * math.log(1 + r.get("count")),
             "return": r.get("return")
         }
@@ -197,14 +196,14 @@ def get_tickers(hours_back: int = 4, now=None, symbol_filter=None):
     df["score"] = df["weighted_sentiment_score"] * df["return"]
     df["score2"] = df["symbol_score"] * df["return"]
 
-    df = df.sort_values(by="score", ascending=False)
+    df = df.sort_values(by="return", ascending=False)
 
     return df
 
 
 class TradingAgent:
     def __init__(self):
-        self.today = "2025-11-18"
+        self.today = "2025-11-26"
         self.starting_time = datetime.strptime(self.today, "%Y-%m-%d", )
         self.now = self.starting_time
         self.end_time = self.starting_time + timedelta(days=1)
@@ -258,8 +257,10 @@ class TradingAgent:
 
             if score >= 0 and return_percentage > 0 and score_2 >= 0 and weighted_sentiment_score > 0 and len(self.current_holdings) < 10:
                 ticker_info = YahooStockMarket().get_stock_info(symbol)
-                print(f"Buying {ticker_info.name} ({symbol}) at ${ticker_info.regularMarketPrice}")
-                self.current_holdings.append(symbol)
+                if symbol not in self.current_holdings:
+                    print(f"Buying {ticker_info.name} ({symbol}) at ${ticker_info.regularMarketPrice}, timestamp: {self.now}")
+
+                    self.current_holdings.append(symbol)
 
             if len(self.current_holdings) == 10:
                 break
@@ -283,7 +284,7 @@ class TradingAgent:
                 continue
 
             elif self.market_open():
-                row = self.get_history_row(self.now)
+                # row = self.get_history_row(self.now)
                 print(f"""Market open -- Time: {self.now.strftime("%H:%M")}\n Holdings: {self.current_holdings}\n""")
 
                 if len(self.current_holdings) < 10:
@@ -296,5 +297,5 @@ class TradingAgent:
 if __name__ == "__main__":
     agent = TradingAgent()
     agent.run()
-    # symbols = get_tickers(hours_back=24, symbol_filter=["NVDA"])
+    # symbols = get_tickers(hours_back=24)
     pass
