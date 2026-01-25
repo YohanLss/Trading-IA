@@ -12,3 +12,11 @@ nltk
 ddgs
 newsapi-python
 pymongo
+yfinance
+pandas
+numpy
+matplotlib
+seaborn
+scikit-learn
+xgb
+warnings
