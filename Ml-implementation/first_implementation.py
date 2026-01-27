@@ -17,10 +17,17 @@ warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 warnings.filterwarnings("ignore", message="y_pred contains classes not in y_true")
 
 # 1) Télécharger les données
-def load_data(ticker="AAPL", start="2020-01-01", end="2024-01-01"):
-    donne = yf.download(ticker, start=start, end=end, auto_adjust = True)
-    donne = donne.sort_index()
-    return donne
+def load_data(ticker="AAPL", start="2018-01-01", end="2024-01-01"):
+    df = yf.download(ticker, start=start, end=end, auto_adjust=False)
+    df = df.sort_index()
+
+    # MultiIndex: (Price, Ticker) -> on garde Price uniquement si 1 ticker
+    if isinstance(df.columns, pd.MultiIndex):
+        # si 1 ticker
+        df = df.xs(ticker, axis=1, level=1)
+
+    return df
+
 
 
 # 2) Feature engineering
@@ -28,19 +35,25 @@ def add_features(df):
     df = df.copy()
 
     # returns
-    df["return_1d"] = df["Close"].pct_change()
+    
     df["return_5d"] = df["Close"].pct_change(5)
     df["return_20d"] = df["Close"].pct_change(20)
 
     # moving averages (SMA)
-    df["sma_10"] = df["Close"].rolling(10).mean()
-    df["sma_20"] = df["Close"].rolling(20).mean()
-    df["sma_30"] = df["Close"].rolling(30).mean()
+    sma_5 = df["Close"].rolling(5).mean()
+    sma_10 = df["Close"].rolling(10).mean()
+    sma_20 = df["Close"].rolling(20).mean()
+    sma_30 = df["Close"].rolling(30).mean()
+    sma_60 = df["Close"].rolling(60).mean()
+   
 
     # EMA
-    df["ema_10"] = df["Close"].ewm(span=10, adjust=False).mean()
-    df["ema_20"] = df["Close"].ewm(span=20, adjust=False).mean()
-    df["ema_30"] = df["Close"].ewm(span=30, adjust=False).mean()
+    ema_5 = df["Close"].ewm(span=5, adjust=False).mean()
+    ema_10 = df["Close"].ewm(span=10, adjust=False).mean()
+    ema_20 = df["Close"].ewm(span=20, adjust=False).mean()
+    ema_30 = df["Close"].ewm(span=30, adjust=False).mean()
+    ema_60 = df["Close"].ewm(span=60, adjust=False).mean()
+
 
     # RSI (14)
     delta = df["Close"].diff()
@@ -61,7 +74,7 @@ def add_features(df):
     df["RSA"] = df["Close"].pct_change(12)
 
     # Volatilité
-    df["volatility_10"] = df["return_1d"].rolling(10).std()
+    df["volatility_10"] = df["return_5d"].rolling(50).std()
 
     #ATR
     df["H-L"] = df["High"] - df["Low"]
@@ -72,8 +85,58 @@ def add_features(df):
 
 
     #Volume indicators
-    df["volume_change"] = df["Volume"].pct_change()
     df["volume_ma_10"] = df["Volume"].rolling(10).mean()
+
+    #features de Ben-----Début
+    df["price_ratio_5_10"] = sma_5 / sma_10
+    df["price_ratio_10_20"] = sma_10 / sma_20
+    df["price_ratio_20_60"] = sma_20 / sma_60
+
+    df["vma_5"] = df["Volume"].rolling(5).mean()
+    df["vma_10"] = df["Volume"].rolling(10).mean()
+    df["vma_20"] = df["Volume"].rolling(20).mean()
+    df["vma_60"] = df["Volume"].rolling(60).mean()
+
+    df["vol_ratio_5_10"] = df["vma_5"] / df["vma_10"]
+    df["vol_ratio_10_20"] = df["vma_10"] / df["vma_20"]
+    df["vol_ratio_20_60"] = df["vma_20"] / df["vma_60"]
+    df["vol_ratio_5_20"] = df["vma_5"] / df["vma_20"]
+    df["vol_ratio_5_60"] = df["vma_5"] / df["vma_60"]
+
+    df["ema_ratio_5_10"] = ema_5 / ema_10
+    df["ema_ratio_10_20"] = ema_10 / ema_20
+    df["ema_ratio_5_20"] = ema_5 / ema_20
+    df["ema_ratio_20_60"] = ema_20 / ema_60
+
+
+    
+
+    #features de Ben-----Fin
+    # Long-term trend
+    df["sma_200"] = df["Close"].rolling(200).mean()
+
+    # Distance au régime long terme
+    df["dist_sma_200"] = (df["Close"] - df["sma_200"]) / df["sma_200"]
+
+    # Pente de la SMA200 (direction du marché)
+    df["sma_200_slope"] = df["sma_200"].pct_change(20)
+
+    # Position relative
+    df["above_sma_200"] = (df["Close"] > df["sma_200"]).astype(int)
+
+    # Multi-horizon returns
+    df["return_60d"] = df["Close"].pct_change(60)
+
+    # RSI long terme
+    df["RSI_30"] = 100 - (100 / (1 + (
+    df["Close"].diff().clip(lower=0).rolling(30).mean() /
+        (-df["Close"].diff().clip(upper=0).rolling(30).mean())
+        )))
+
+    # Trend alignment
+    df["ema_20_50"] = df["Close"].ewm(span=20).mean() - df["Close"].ewm(span=50).mean()
+    df["ema_50_100"] = df["Close"].ewm(span=50).mean() - df["Close"].ewm(span=100).mean()
+
 
     return df
 
@@ -211,7 +274,8 @@ def train_eval_model(model, X_train, y_train, X_test, y_test, model_name, labels
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
 
-    bal_acc = recall_score(y_test, y_pred, labels=labels, average="macro", zero_division=0)
+    
+    bal_acc = balanced_accuracy_score(y_test, y_pred)
 
     return {
         "model": model,
@@ -227,7 +291,7 @@ def train_eval_model(model, X_train, y_train, X_test, y_test, model_name, labels
 # 8) Boucle thresholds (et optionnellement horizons)
 def test_thresholds(
     ticker="AAPL",
-    start="2020-01-01",
+    start="2018-01-01",
     end="2024-01-01",
     horizon=(20, 45, 60, 90),
     thresholds=(0.03, 0.05, 0.07, 0.10),
@@ -259,9 +323,34 @@ def test_thresholds(
 
             X_train, y_train, X_valid, y_valid, X_test, y_test = time_split(df)
 
+            #Juste pour XGB
+            labels = [-1, 0, 1]
+
+            if set(y_train.unique()) != set(labels):
+                results.append({
+                "stock": ticker, "model": model_name, "horizon": h, "threshold": th,
+                "n_samples": len(df),
+                "target_rate": df["target"].mean(),
+                "accuracy": np.nan, "balanced_accuracy": np.nan,
+                "note": "skip (classes manquantes dans y_train)"
+                })
+                continue
+
+            if set(y_test.unique()) != set(labels):
+                results.append({
+                    "stock": ticker, "model": model_name, "horizon": h, "threshold": th,
+                    "n_samples": len(df),
+                    "target_rate": df["target"].mean(),
+                    "accuracy": np.nan, "balanced_accuracy": np.nan,
+                    "note": "skip (classes manquantes dans y_test)"
+                })
+                continue
+
+
             # skip si le test ne contient pas toutes les classes
             if y_test.nunique() < 3:
                 results.append({
+                    "stock": ticker,
                     "model": model_name,
                     "horizon": h,
                     "threshold": th,
@@ -291,6 +380,7 @@ def test_thresholds(
 
 
             row = {
+                "stock": ticker,
                 "model": model_name,
                 "horizon": h,
                 "threshold": th,
@@ -308,7 +398,7 @@ def test_thresholds(
 
             if verbose:
                 print("=" * 60)
-                print(f"model={model_name} | threshold={th} | horizon={h}")
+                print(f"ticker={ticker} | model={model_name} | threshold={th} | horizon={h}")
                 print(f"n={row['n_samples']} | "f"pos={rate_pos:.3f} | "f"neu={rate_neu:.3f} | "f"neg={rate_neg:.3f}")
                 print(f"accuracy={row['accuracy']:.3f} | bal_acc={row['balanced_accuracy']:.3f}")
                 print(metrics["confusion_matrix"])
@@ -319,12 +409,19 @@ def test_thresholds(
 
 models = ["logreg", "knn", "rf","xgb"]
 all_results = []
+stocks = ["AAPL","MSFT","AMZN","NVDA"]
 
-for m in models:
-    df_res = test_thresholds(model_name=m, verbose=True)
-    all_results.append(df_res)
+for s in stocks:
+    print("------" + s + "-------")
+    for m in models:
+        df_res = test_thresholds(ticker=s,start="2018-01-01",
+            end="2024-01-01",model_name=m, verbose=True)
+        all_results.append(df_res)
 
-final = pd.concat(all_results).sort_values("balanced_accuracy", ascending=False)
-print(final.head(20))
-final.to_csv("results.csv", index = False)
+    final = pd.concat(all_results).sort_values("balanced_accuracy", ascending=False)
+    print(final.head(20))
+    final.to_csv( s+"_results"+".csv", index = False)
+
+
+
 
