@@ -11,13 +11,14 @@ import xgboost as xgb
 import warnings
 from sklearn.exceptions import UndefinedMetricWarning
 from sklearn.metrics import recall_score
+from sklearn.metrics import precision_score, recall_score
 
 
 warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 warnings.filterwarnings("ignore", message="y_pred contains classes not in y_true")
 
 # 1) Télécharger les données
-def load_data(ticker="AAPL", start="2018-01-01", end="2024-01-01"):
+def load_data(ticker="AAPL", start="2020-01-01", end="2024-01-01"):
     df = yf.download(ticker, start=start, end=end, auto_adjust=False)
     df = df.sort_index()
 
@@ -145,10 +146,7 @@ def add_features(df):
 def add_target(df, horizon=60, thresholds=0.05):
     df = df.copy()
     df["future_return"] = df["Close"].shift(-horizon) / df["Close"] - 1
-    df["target"] =  np.select([df["future_return"] >= thresholds, df["future_return"] <= -thresholds],
-    [1, -1],
-    default=0
-).astype(int)
+    df["target"] =  (df["future_return"] >= thresholds).astype(int)
     return df
 
 
@@ -214,7 +212,7 @@ def train_eval_random_forest(X_train, y_train, X_test, y_test, random_state=42):
     }
     return model, y_pred, metrics
 
-
+"""""
 def encode_y_for_xgb(y):
     # -1 -> 0, 0 -> 1, 1 -> 2
     return (y + 1).astype(int)
@@ -222,6 +220,7 @@ def encode_y_for_xgb(y):
 def decode_y_from_xgb(y_pred):
     # 0 -> -1, 1 -> 0, 2 -> 1
     return (y_pred - 1).astype(int)
+"""
 
 #ensemble des modèles à utiliser
 def get_model(model_name="rf"):
@@ -249,9 +248,9 @@ def get_model(model_name="rf"):
         learning_rate=0.05,
         subsample=0.8,
         colsample_bytree=0.8,
-        objective="multi:softprob",
-        num_class=3,
-        eval_metric="mlogloss",
+        objective="binary:logistic" ,       #"multi:softprob",
+        #num_class=2,
+        eval_metric="logloss",
         random_state=42,
         n_jobs=-1
     )
@@ -265,36 +264,39 @@ def get_model(model_name="rf"):
 
 
 
-def train_eval_model(model, X_train, y_train, X_test, y_test, model_name, labels=[-1,0,1]):
+
+def train_eval_model(model, X_train, y_train, X_test, y_test, model_name):
+    y_train = np.asarray(y_train).astype(int)
+    y_test  = np.asarray(y_test).astype(int)
+
+    assert len(X_train) == len(y_train), f"Train mismatch: {len(X_train)} vs {len(y_train)}"
+    assert len(X_test) == len(y_test), f"Test mismatch: {len(X_test)} vs {len(y_test)}"
+
     if model_name == "xgb":
-        y_train_fit = (y_train + 1).astype(int)
-        model.fit(X_train, y_train_fit)
-        y_pred = (model.predict(X_test).astype(int) - 1).astype(int)
+        model.fit(X_train, y_train)  # y_train doit être 0/1
+        proba = model.predict_proba(X_test)[:, 1]
+        y_pred = (proba >= 0.5).astype(int)
     else:
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
 
-    
-    bal_acc = balanced_accuracy_score(y_test, y_pred)
-
     return {
-        "model": model,
-        "y_pred": y_pred,
         "accuracy": (y_pred == y_test).mean(),
-        "balanced_accuracy": bal_acc,
-        "confusion_matrix": confusion_matrix(y_test, y_pred, labels=labels),
-        "report": classification_report(y_test, y_pred, labels=labels, digits=3, zero_division=0)
+        "precision": precision_score(y_test, y_pred, zero_division=0),
+        "recall": recall_score(y_test, y_pred, zero_division=0),
+        "balanced_accuracy": balanced_accuracy_score(y_test, y_pred),
+        "confusion_matrix": confusion_matrix(y_test, y_pred, labels=[0, 1]),
+        "report": classification_report(y_test, y_pred, labels=[0, 1], digits=3, zero_division=0)
     }
-
 
 
 # 8) Boucle thresholds (et optionnellement horizons)
 def test_thresholds(
     ticker="AAPL",
-    start="2018-01-01",
-    end="2024-01-01",
-    horizon=(20, 45, 60, 90),
-    thresholds=(0.03, 0.05, 0.07, 0.10),
+    start="2020-01-01",
+    end="2026-01-01",
+    horizon=(1,3,5,10,20, 45, 60, 90),
+    thresholds=(0.01, 0.02, 0.03, 0.05, 0.07 , 0.10,0.15,0.18,0.20),
     verbose=True,
     model_name ="rf"
 ):
@@ -310,6 +312,7 @@ def test_thresholds(
             df = clean_dataset(df)
 
             # si dataset trop petit ou target constant, on skip
+            
             if df["target"].nunique() < 2 or len(df) < 200:
                 results.append({
                     "threshold": th,
@@ -317,38 +320,20 @@ def test_thresholds(
                     "target_rate": df["target"].mean() if len(df) else np.nan,
                     "accuracy": np.nan,
                     "balanced_accuracy": np.nan,
-                    "note": "skip (target constant ou trop peu de données)"
+                    "note": "skip (target constant ou trop peu de données)",
+                    "precision": np.nan,
+                    "recall": np.nan
+
                 })
                 continue
 
             X_train, y_train, X_valid, y_valid, X_test, y_test = time_split(df)
+           
+            X_train_s, X_valid_s, X_test_s, scaler = scale_sets(X_train, X_valid, X_test)
 
-            #Juste pour XGB
-            labels = [-1, 0, 1]
-
-            if set(y_train.unique()) != set(labels):
-                results.append({
-                "stock": ticker, "model": model_name, "horizon": h, "threshold": th,
-                "n_samples": len(df),
-                "target_rate": df["target"].mean(),
-                "accuracy": np.nan, "balanced_accuracy": np.nan,
-                "note": "skip (classes manquantes dans y_train)"
-                })
-                continue
-
-            if set(y_test.unique()) != set(labels):
-                results.append({
-                    "stock": ticker, "model": model_name, "horizon": h, "threshold": th,
-                    "n_samples": len(df),
-                    "target_rate": df["target"].mean(),
-                    "accuracy": np.nan, "balanced_accuracy": np.nan,
-                    "note": "skip (classes manquantes dans y_test)"
-                })
-                continue
-
-
-            # skip si le test ne contient pas toutes les classes
-            if y_test.nunique() < 3:
+            
+            model = get_model(model_name)
+            if y_train.nunique() < 2 or y_test.nunique() < 2:
                 results.append({
                     "stock": ticker,
                     "model": model_name,
@@ -356,17 +341,12 @@ def test_thresholds(
                     "threshold": th,
                     "n_samples": len(df),
                     "target_rate": df["target"].mean(),
-                    "accuracy": np.nan,
-                    "balanced_accuracy": np.nan,
-                    "note": "skip (classes manquantes dans y_test)"
+                    "precision": np.nan,
+                    "recall": np.nan,
+                    "note": "skip (une seule classe dans train ou test)"
                 })
                 continue
 
-            X_train_s, X_valid_s, X_test_s, scaler = scale_sets(X_train, X_valid, X_test)
-
-            # RandomForest ne nécessite pas scaling, mais ce n’est pas grave.
-            # Si tu veux "propre", on peut donner les X_* non-scalés au RF.
-            model = get_model(model_name)
         
 
             needs_scaling = model_name in ["logreg", "knn"] 
@@ -386,41 +366,42 @@ def test_thresholds(
                 "threshold": th,
                 "n_samples": len(df),
                 "target_rate": df["target"].mean(),
-                "accuracy": metrics["accuracy"],
-                "balanced_accuracy": metrics["balanced_accuracy"],
+                "recall":metrics["recall"],#"accuracy": metrics["accuracy"],
+                "precision": metrics["precision"] #"balanced_accuracy": metrics["balanced_accuracy"],
             }
             results.append(row)
-
+            
             rate_pos = (df["target"] == 1).mean()
-            rate_neg = (df["target"] == -1).mean()
-            rate_neu = (df["target"] == 0).mean()
+            rate_neg = (df["target"] == 0).mean()
+            #rate_neu = (df["target"] == 0).mean()
 
 
             if verbose:
                 print("=" * 60)
                 print(f"ticker={ticker} | model={model_name} | threshold={th} | horizon={h}")
-                print(f"n={row['n_samples']} | "f"pos={rate_pos:.3f} | "f"neu={rate_neu:.3f} | "f"neg={rate_neg:.3f}")
-                print(f"accuracy={row['accuracy']:.3f} | bal_acc={row['balanced_accuracy']:.3f}")
+                print(f"n={row['n_samples']} | "f"pos={rate_pos:.3f} | "f"neg={rate_neg:.3f}")    #| "f"neu={rate_neu:.3f} 
+                print(f"precision={row['precision']:.3f} | recall={row['recall']:.3f}")
                 print(metrics["confusion_matrix"])
                 print(metrics["report"])
 
-    return pd.DataFrame(results).sort_values(by="balanced_accuracy", ascending=False)
+            
+    return pd.DataFrame(results).sort_values(by="precision", ascending=False)
 
 
 models = ["logreg", "knn", "rf","xgb"]
 all_results = []
-stocks = ["AAPL","MSFT","AMZN","NVDA"]
+stocks = ["AAPL","MSTF","SPY","QQQ","TSLA","META"]
 
 for s in stocks:
     print("------" + s + "-------")
     for m in models:
-        df_res = test_thresholds(ticker=s,start="2018-01-01",
-            end="2024-01-01",model_name=m, verbose=True)
+        df_res = test_thresholds(ticker=s,start="2020-01-01",
+            end="2026-01-01",model_name=m, verbose=True)
         all_results.append(df_res)
 
-    final = pd.concat(all_results).sort_values("balanced_accuracy", ascending=False)
+    final = pd.concat(all_results).sort_values("recall", ascending=False)
     print(final.head(20))
-    final.to_csv( s+"_results"+".csv", index = False)
+    final.to_csv( "simulation_results/" +s+"_results"+".csv", index = False)
 
 
 
