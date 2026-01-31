@@ -32,112 +32,149 @@ def load_data(ticker="AAPL", start="2020-01-01", end="2024-01-01"):
 
 
 # 2) Feature engineering
-def add_features(df):
+def add_features(df,horizon):
     df = df.copy()
 
-    # returns
-    
-    df["return_5d"] = df["Close"].pct_change(5)
-    df["return_20d"] = df["Close"].pct_change(20)
+    #features pour long terme
+    if(horizon>90 or horizon == 90):
 
-    # moving averages (SMA)
-    sma_5 = df["Close"].rolling(5).mean()
-    sma_10 = df["Close"].rolling(10).mean()
-    sma_20 = df["Close"].rolling(20).mean()
-    sma_30 = df["Close"].rolling(30).mean()
-    sma_60 = df["Close"].rolling(60).mean()
+        df["return_90d"] = df["Close"].pct_change(90)
+        df["sma_200"] = df["Close"].rolling(200).mean()
+        df["dist_sma_200"] = (df["Close"] - df["sma_200"]) / df["sma_200"]
+        df["sma_200_slope"] = df["sma_200"].pct_change(20)
+        df["above_sma_200"] = (df["Close"] > df["sma_200"]).astype(int)
+        df["return_90d"] = df["Close"].pct_change(90)
+        df["return_180d"] = df["Close"].pct_change(180)
+        df["momentum_mean_90"] = df["Close"].pct_change().rolling(90).mean()
+        df["volatility_90"] = df["Close"].pct_change().rolling(90).std()
+        delta = df["Close"].diff()
+        gain = delta.clip(lower=0).rolling(60).mean()
+        loss = -delta.clip(upper=0).rolling(60).mean()
+        df["RSI_60"] = 100 - (100 / (1 + gain / loss))
+        gain_90 = delta.clip(lower=0).rolling(90).mean()
+        loss_90 = -delta.clip(upper=0).rolling(90).mean()
+        df["RSI_90"] = 100 - (100 / (1 + gain_90 / loss_90))
+        df["drawdown"] = df["Close"] / df["Close"].rolling(252).max() - 1
+        df["bull_market"] = ((df["Close"] > df["sma_200"]) &
+            (df["sma_200_slope"] > 0)
+            ).astype(int)
+
+
+    else:
+        df["return_5d"] = df["Close"].pct_change(5)
+        df["return_20d"] = df["Close"].pct_change(20)
+
+        # moving averages (SMA)
+        sma_5 = df["Close"].rolling(5).mean()
+        sma_10 = df["Close"].rolling(10).mean()
+        sma_20 = df["Close"].rolling(20).mean()
+        sma_30 = df["Close"].rolling(30).mean()
+        sma_60 = df["Close"].rolling(60).mean()
    
 
-    # EMA
-    ema_5 = df["Close"].ewm(span=5, adjust=False).mean()
-    ema_10 = df["Close"].ewm(span=10, adjust=False).mean()
-    ema_20 = df["Close"].ewm(span=20, adjust=False).mean()
-    ema_30 = df["Close"].ewm(span=30, adjust=False).mean()
-    ema_60 = df["Close"].ewm(span=60, adjust=False).mean()
+        # EMA
+        ema_5 = df["Close"].ewm(span=5, adjust=False).mean()
+        ema_10 = df["Close"].ewm(span=10, adjust=False).mean()
+        ema_20 = df["Close"].ewm(span=20, adjust=False).mean()
+        ema_30 = df["Close"].ewm(span=30, adjust=False).mean()
+        ema_60 = df["Close"].ewm(span=60, adjust=False).mean()
 
 
-    # RSI (14)
-    delta = df["Close"].diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
+        # RSI (14)
+        delta = df["Close"].diff()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
 
-    # moyenne glissante sur 14 jours
-    window = 14
-    avg_gain = gain.rolling(window).mean()
-    avg_loss = loss.rolling(window).mean()
+        # moyenne glissante sur 14 jours
+        window = 14
+        avg_gain = gain.rolling(window).mean()
+        avg_loss = loss.rolling(window).mean()
 
-    #division par zéro
-    rs = avg_gain / avg_loss
-
-
-    # RSI
-    df["RSI"] = 100 - (100 / (1 + rs))
-    df["RSA"] = df["Close"].pct_change(12)
-
-    # Volatilité
-    df["volatility_10"] = df["return_5d"].rolling(50).std()
-
-    #ATR
-    df["H-L"] = df["High"] - df["Low"]
-    df["H-C"] = abs(df["High"] - df["Close"].shift(1))
-    df["L-C"] = abs(df["Low"] - df["Close"].shift(1))
-    df["tr"] = df[["H-L", "H-C", "L-C"]].max(axis=1)
-    df["atr"] = df["tr"].rolling(14).mean()
+        #division par zéro
+        rs = avg_gain / avg_loss
 
 
-    #Volume indicators
-    df["volume_ma_10"] = df["Volume"].rolling(10).mean()
+        # RSI
+        df["RSI"] = 100 - (100 / (1 + rs))
+        df["RSA"] = df["Close"].pct_change(12)
 
-    #features de Ben-----Début
-    df["price_ratio_5_10"] = sma_5 / sma_10
-    df["price_ratio_10_20"] = sma_10 / sma_20
-    df["price_ratio_20_60"] = sma_20 / sma_60
+        # Volatilité
+        df["volatility_10"] = df["return_5d"].rolling(50).std()
 
-    df["vma_5"] = df["Volume"].rolling(5).mean()
-    df["vma_10"] = df["Volume"].rolling(10).mean()
-    df["vma_20"] = df["Volume"].rolling(20).mean()
-    df["vma_60"] = df["Volume"].rolling(60).mean()
-
-    df["vol_ratio_5_10"] = df["vma_5"] / df["vma_10"]
-    df["vol_ratio_10_20"] = df["vma_10"] / df["vma_20"]
-    df["vol_ratio_20_60"] = df["vma_20"] / df["vma_60"]
-    df["vol_ratio_5_20"] = df["vma_5"] / df["vma_20"]
-    df["vol_ratio_5_60"] = df["vma_5"] / df["vma_60"]
-
-    df["ema_ratio_5_10"] = ema_5 / ema_10
-    df["ema_ratio_10_20"] = ema_10 / ema_20
-    df["ema_ratio_5_20"] = ema_5 / ema_20
-    df["ema_ratio_20_60"] = ema_20 / ema_60
+        #ATR
+        df["H-L"] = df["High"] - df["Low"]
+        df["H-C"] = abs(df["High"] - df["Close"].shift(1))
+        df["L-C"] = abs(df["Low"] - df["Close"].shift(1))
+        df["tr"] = df[["H-L", "H-C", "L-C"]].max(axis=1)
+        df["atr"] = df["tr"].rolling(14).mean()
 
 
+        #Volume indicators
+        df["volume_ma_10"] = df["Volume"].rolling(10).mean()
+
+        #features de Ben-----Début
+        df["price_ratio_5_10"] = sma_5 / sma_10
+        df["price_ratio_10_20"] = sma_10 / sma_20
+        df["price_ratio_20_60"] = sma_20 / sma_60
+
+        df["vma_5"] = df["Volume"].rolling(5).mean()
+        df["vma_10"] = df["Volume"].rolling(10).mean()
+        df["vma_20"] = df["Volume"].rolling(20).mean()
+        df["vma_60"] = df["Volume"].rolling(60).mean()
+
+        df["vol_ratio_5_10"] = df["vma_5"] / df["vma_10"]
+        df["vol_ratio_10_20"] = df["vma_10"] / df["vma_20"]
+        df["vol_ratio_20_60"] = df["vma_20"] / df["vma_60"]
+        df["vol_ratio_5_20"] = df["vma_5"] / df["vma_20"]
+        df["vol_ratio_5_60"] = df["vma_5"] / df["vma_60"]
+
+        df["ema_ratio_5_10"] = ema_5 / ema_10
+        df["ema_ratio_10_20"] = ema_10 / ema_20
+        df["ema_ratio_5_20"] = ema_5 / ema_20
+        df["ema_ratio_20_60"] = ema_20 / ema_60
+
+
+        #Ajout de features
+        df["momentum_accel_5"] = df["return_5d"].diff()
+        df["momentum_accel_20"] = df["return_20d"].diff()
+
+        df["breakout_20"] = df["Close"] / df["Close"].rolling(20).max()
+        df["breakout_60"] = df["Close"] / df["Close"].rolling(60).max()
+
+        df["vol_expansion"] = df["atr"] / df["atr"].rolling(50).mean()
+        df["rsi_velocity"] = df["RSI"].diff()
+
+
+        #features de Ben-----Fin
+        # Long-term trend
+        df["sma_200"] = df["Close"].rolling(200).mean()
+
+        # Distance au régime long terme
+        df["dist_sma_200"] = (df["Close"] - df["sma_200"]) / df["sma_200"]
+
+        # Pente de la SMA200 (direction du marché)
+        df["sma_200_slope"] = df["sma_200"].pct_change(20)
+
+        # Position relative
+        df["above_sma_200"] = (df["Close"] > df["sma_200"]).astype(int)
+
+        # Multi-horizon returns
+        df["return_60d"] = df["Close"].pct_change(60)
+
+        # RSI long terme
+        df["RSI_30"] = 100 - (100 / (1 + (
+        df["Close"].diff().clip(lower=0).rolling(30).mean() /
+            (-df["Close"].diff().clip(upper=0).rolling(30).mean())
+            )))
+
+        # Trend alignment
+        df["ema_20_50"] = df["Close"].ewm(span=20).mean() - df["Close"].ewm(span=50).mean()
+        df["ema_50_100"] = df["Close"].ewm(span=50).mean() - df["Close"].ewm(span=100).mean()
+        
+    
     
 
-    #features de Ben-----Fin
-    # Long-term trend
-    df["sma_200"] = df["Close"].rolling(200).mean()
-
-    # Distance au régime long terme
-    df["dist_sma_200"] = (df["Close"] - df["sma_200"]) / df["sma_200"]
-
-    # Pente de la SMA200 (direction du marché)
-    df["sma_200_slope"] = df["sma_200"].pct_change(20)
-
-    # Position relative
-    df["above_sma_200"] = (df["Close"] > df["sma_200"]).astype(int)
-
-    # Multi-horizon returns
-    df["return_60d"] = df["Close"].pct_change(60)
-
-    # RSI long terme
-    df["RSI_30"] = 100 - (100 / (1 + (
-    df["Close"].diff().clip(lower=0).rolling(30).mean() /
-        (-df["Close"].diff().clip(upper=0).rolling(30).mean())
-        )))
-
-    # Trend alignment
-    df["ema_20_50"] = df["Close"].ewm(span=20).mean() - df["Close"].ewm(span=50).mean()
-    df["ema_50_100"] = df["Close"].ewm(span=50).mean() - df["Close"].ewm(span=100).mean()
-
+    
 
     return df
 
@@ -212,16 +249,6 @@ def train_eval_random_forest(X_train, y_train, X_test, y_test, random_state=42):
     }
     return model, y_pred, metrics
 
-"""""
-def encode_y_for_xgb(y):
-    # -1 -> 0, 0 -> 1, 1 -> 2
-    return (y + 1).astype(int)
-
-def decode_y_from_xgb(y_pred):
-    # 0 -> -1, 1 -> 0, 2 -> 1
-    return (y_pred - 1).astype(int)
-"""
-
 #ensemble des modèles à utiliser
 def get_model(model_name="rf"):
     if model_name == "rf":
@@ -263,6 +290,31 @@ def get_model(model_name="rf"):
         raise ValueError(f"Unknown model: {model_name}")
 
 
+def eval_thresholds_xgb(model, X_test, y_test, thresholds):
+    proba = model.predict_proba(X_test)[:, 1]
+    rows = []
+
+    for t in thresholds:
+        y_pred = (proba >= t).astype(int)
+
+        precision = precision_score(y_test, y_pred, zero_division=0)
+        recall = recall_score(y_test, y_pred, zero_division=0)
+        bal_acc = balanced_accuracy_score(y_test, y_pred)
+
+        score_A = precision * recall
+        score_B = precision * recall * bal_acc
+
+        rows.append({
+            "decision_threshold": t,
+            "precision": precision,
+            "recall": recall,
+            "balanced_accuracy": bal_acc,
+            "score_A": score_A,
+            "score_B": score_B
+        })
+
+    return pd.DataFrame(rows)
+
 
 
 def train_eval_model(model, X_train, y_train, X_test, y_test, model_name):
@@ -273,9 +325,20 @@ def train_eval_model(model, X_train, y_train, X_test, y_test, model_name):
     assert len(X_test) == len(y_test), f"Test mismatch: {len(X_test)} vs {len(y_test)}"
 
     if model_name == "xgb":
-        model.fit(X_train, y_train)  # y_train doit être 0/1
+        model.fit(X_train, y_train)
+
+        # liste des thresholds à tester
+        thresholds_to_test = [0.2, 0.25, 0.3, 0.35, 0.4]
+
+        df_thr = eval_thresholds_xgb(model, X_test, y_test, thresholds_to_test)
+
+        # choisir le meilleur (score_B conseillé)
+        best = df_thr.sort_values("score_B", ascending=False).iloc[0]
+        best_threshold = float(best["decision_threshold"])
+
         proba = model.predict_proba(X_test)[:, 1]
-        y_pred = (proba >= 0.5).astype(int)
+        y_pred = (proba >= best_threshold).astype(int)
+
     else:
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
@@ -286,7 +349,9 @@ def train_eval_model(model, X_train, y_train, X_test, y_test, model_name):
         "recall": recall_score(y_test, y_pred, zero_division=0),
         "balanced_accuracy": balanced_accuracy_score(y_test, y_pred),
         "confusion_matrix": confusion_matrix(y_test, y_pred, labels=[0, 1]),
-        "report": classification_report(y_test, y_pred, labels=[0, 1], digits=3, zero_division=0)
+        "report": classification_report(y_test, y_pred, labels=[0, 1], digits=3, zero_division=0),
+        "best_decision_threshold": best_threshold if model_name == "xgb" else np.nan
+
     }
 
 
@@ -295,20 +360,23 @@ def test_thresholds(
     ticker="AAPL",
     start="2020-01-01",
     end="2026-01-01",
-    horizon=(1,3,5,10,20, 45, 60, 90),
-    thresholds=(0.01, 0.02, 0.03, 0.05, 0.07 , 0.10,0.15,0.18,0.20),
+    horizon=(5,10,20, 45, 60, 90),
+    thresholds=(0.02, 0.03, 0.05, 0.07),
     verbose=True,
     model_name ="rf"
 ):
     raw = load_data(ticker, start, end)
-    raw = add_features(raw)
+    
    
 
     results = []
 
     for h in horizon:
+        df_feat = raw.copy()
+        df_feat = add_features(df_feat,horizon=h)
         for th in thresholds:
-            df = add_target(raw, horizon=h, thresholds=th)
+            df = df_feat.copy()
+            df = add_target(df, horizon=h, thresholds=th)
             df = clean_dataset(df)
 
             # si dataset trop petit ou target constant, on skip
@@ -327,12 +395,15 @@ def test_thresholds(
                 })
                 continue
 
+            
+
+
             X_train, y_train, X_valid, y_valid, X_test, y_test = time_split(df)
            
             X_train_s, X_valid_s, X_test_s, scaler = scale_sets(X_train, X_valid, X_test)
 
             
-            model = get_model(model_name)
+            
             if y_train.nunique() < 2 or y_test.nunique() < 2:
                 results.append({
                     "stock": ticker,
@@ -347,7 +418,10 @@ def test_thresholds(
                 })
                 continue
 
-        
+            
+
+            
+            model = get_model(model_name)
 
             needs_scaling = model_name in ["logreg", "knn"] 
 
@@ -367,7 +441,9 @@ def test_thresholds(
                 "n_samples": len(df),
                 "target_rate": df["target"].mean(),
                 "recall":metrics["recall"],#"accuracy": metrics["accuracy"],
-                "precision": metrics["precision"] #"balanced_accuracy": metrics["balanced_accuracy"],
+                "precision": metrics["precision"] ,#"balanced_accuracy": metrics["balanced_accuracy"],
+                "decision_threshold": metrics.get("best_decision_threshold", np.nan),
+
             }
             results.append(row)
             
@@ -385,16 +461,20 @@ def test_thresholds(
                 print(metrics["report"])
 
             
-    return pd.DataFrame(results).sort_values(by="precision", ascending=False)
+    return pd.DataFrame(results).sort_values(by="recall", ascending=False)
 
 
 models = ["logreg", "knn", "rf","xgb"]
-all_results = []
-stocks = ["AAPL","MSTF","SPY","QQQ","TSLA","META"]
+
+stocks = ["AAPL","MSFT","NVDA","ANZN","TSLA","META","TSM"]
 
 for s in stocks:
+    all_results = []
+
+
     print("------" + s + "-------")
     for m in models:
+
         df_res = test_thresholds(ticker=s,start="2020-01-01",
             end="2026-01-01",model_name=m, verbose=True)
         all_results.append(df_res)
