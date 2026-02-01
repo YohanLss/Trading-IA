@@ -363,7 +363,7 @@ def test_thresholds(
     ticker="AAPL",
     start="2018-01-01",
     end="2026-01-01",
-    horizon=(5,10,20, 45, 60, 90),
+    horizon=(1,5,10),
     thresholds=(0.02, 0.03, 0.05, 0.07),
     verbose=True,
     model_name ="rf"
