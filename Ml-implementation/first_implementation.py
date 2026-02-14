@@ -220,6 +220,9 @@ def time_split(df):
     X_test = test.drop(columns=["target"])
     y_test = test["target"]
 
+    print(len(train[train["target"]==1]))
+    print(len(train[train["target"]==0]))
+
     return X_train, y_train, X_valid, y_valid, X_test, y_test
 
 
@@ -334,7 +337,7 @@ def train_eval_model(model, X_train, y_train, X_valid, y_valid, X_test, y_test, 
 
         # 1) choisir threshold sur VALID
         df_thr = eval_thresholds_xgb(model, X_valid, y_valid, thresholds_to_test)
-        best = df_thr.sort_values("score_B", ascending=False).iloc[0]
+        best = df_thr.sort_values("precision", ascending=False).iloc[0]
         best_threshold = float(best["decision_threshold"])
 
         # 2) eval finale sur TEST avec ce threshold
@@ -363,8 +366,7 @@ def test_thresholds(
     ticker="AAPL",
     start="2018-01-01",
     end="2026-01-01",
-    horizon=(1,5,10),
-    thresholds=(0.02, 0.03, 0.05, 0.07),
+    horizon=(5,10,20, 45, 60, 90),
     verbose=True,
     model_name ="rf"
 ):
@@ -377,120 +379,118 @@ def test_thresholds(
     for h in horizon:
         df_feat = raw.copy()
         df_feat = add_features(df_feat,horizon=h)
-        for th in thresholds:
-            df = df_feat.copy()
-            df = add_target(df, horizon=h, thresholds=th)
-            df = clean_dataset(df)
+        
+        df = df_feat.copy()
+        df = add_target(df, horizon=h)
+        df = clean_dataset(df)
 
-            # si dataset trop petit ou target constant, on skip
+        # si dataset trop petit ou target constant, on skip
             
-            if df["target"].nunique() < 2 or len(df) < 200:
-                results.append({
-                    "threshold": th,
-                    "n_samples": len(df),
-                    "target_rate": df["target"].mean() if len(df) else np.nan,
-                    "accuracy": np.nan,
-                    "balanced_accuracy": np.nan,
-                    "note": "skip (target constant ou trop peu de données)",
-                    "precision": np.nan,
-                    "recall": np.nan
+        if df["target"].nunique() < 2 or len(df) < 200:
+            results.append({
+                "n_samples": len(df),
+                "target_rate": df["target"].mean() if len(df) else np.nan,
+                "accuracy": np.nan,
+                "balanced_accuracy": np.nan,
+                "note": "skip (target constant ou trop peu de données)",
+                "precision": np.nan,
+                "recall": np.nan
 
-                })
-                continue
+            })
+            continue
 
             
 
 
-            X_train, y_train, X_valid, y_valid, X_test, y_test = time_split(df)
+        X_train, y_train, X_valid, y_valid, X_test, y_test = time_split(df)
            
-            X_train_s, X_valid_s, X_test_s, scaler = scale_sets(X_train, X_valid, X_test)
+        X_train_s, X_valid_s, X_test_s, scaler = scale_sets(X_train, X_valid, X_test)
 
-            pos = (y_train == 1).sum()
-            neg = (y_train == 0).sum()
-            scale_pos_weight = (neg / pos) if pos > 0 else 1
+        pos = (y_train == 1).sum()
+        neg = (y_train == 0).sum()
+        scale_pos_weight = (neg / pos) if pos > 0 else 1
 
-            model = get_model(model_name, scale_pos_weight=scale_pos_weight)
-
-            
-            
-            if y_train.nunique() < 2 or y_test.nunique() < 2:
-                results.append({
-                    "stock": ticker,
-                    "model": model_name,
-                    "horizon": h,
-                    "threshold": th,
-                    "n_samples": len(df),
-                    "target_rate": df["target"].mean(),
-                    "precision": np.nan,
-                    "recall": np.nan,
-                    "note": "skip (une seule classe dans train ou test)"
-                })
-                continue
-
-            
+        model = get_model(model_name, scale_pos_weight=scale_pos_weight)
 
             
             
-
-            needs_scaling = model_name in ["logreg", "knn"] 
-
-            #scaling utile que pour knn et logreg
-
-            if needs_scaling:
-                metrics = train_eval_model(
-                model,
-                X_train_s, y_train,
-                X_valid_s, y_valid,
-                X_test_s, y_test,
-                model_name=model_name
-)
-
-            else:
-                metrics = train_eval_model(
-                model,
-                X_train, y_train,
-                X_valid, y_valid,
-                X_test, y_test,
-                model_name=model_name
-            )
-
-
-
-            row = {
+        if y_train.nunique() < 2 or y_test.nunique() < 2:
+            results.append({
                 "stock": ticker,
                 "model": model_name,
                 "horizon": h,
-                "threshold": th,
                 "n_samples": len(df),
                 "target_rate": df["target"].mean(),
-                "recall":metrics["recall"],#"accuracy": metrics["accuracy"],
-                "precision": metrics["precision"] ,#"balanced_accuracy": metrics["balanced_accuracy"],
-                "decision_threshold": metrics.get("best_decision_threshold", np.nan),
-                "score_B": metrics["precision"] * metrics["recall"] * metrics["balanced_accuracy"]
-
-            }
-            results.append(row)
-            
-            rate_pos = (df["target"] == 1).mean()
-            rate_neg = (df["target"] == 0).mean()
-            #rate_neu = (df["target"] == 0).mean()
-
-
-            if verbose:
-                print("=" * 60)
-                print(f"ticker={ticker} | model={model_name} | threshold={th} | horizon={h}")
-                print(f"n={row['n_samples']} | "f"pos={rate_pos:.3f} | "f"neg={rate_neg:.3f}")    #| "f"neu={rate_neu:.3f} 
-                print(f"precision={row['precision']:.3f} | recall={row['recall']:.3f}")
-                print(metrics["confusion_matrix"])
-                print(metrics["report"])
+                "precision": np.nan,
+                "recall": np.nan,
+                "note": "skip (une seule classe dans train ou test)"
+                })
+            continue
 
             
-    return pd.DataFrame(results).sort_values(by="score_B", ascending=False)
+
+            
+            
+
+        needs_scaling = model_name in ["logreg", "knn"] 
+
+        #scaling utile que pour knn et logreg
+
+        if needs_scaling:
+            metrics = train_eval_model(
+            model,
+            X_train_s, y_train,
+            X_valid_s, y_valid,
+            X_test_s, y_test,
+            model_name=model_name
+            )
+
+        else:
+            metrics = train_eval_model(
+            model,
+            X_train, y_train,
+            X_valid, y_valid,
+            X_test, y_test,
+            model_name=model_name
+        )
+
+
+
+        row = {
+            "stock": ticker,
+            "model": model_name,
+            "horizon": h,
+            "n_samples": len(df),
+            "target_rate": df["target"].mean(),
+            "recall":metrics["recall"],#"accuracy": metrics["accuracy"],
+            "precision": metrics["precision"] ,#"balanced_accuracy": metrics["balanced_accuracy"],
+            "decision_threshold": metrics.get("best_decision_threshold", np.nan),
+            "score_B": metrics["precision"] * metrics["recall"] * metrics["balanced_accuracy"]
+
+        }
+        results.append(row)
+            
+        rate_pos = (df["target"] == 1).mean()
+        rate_neg = (df["target"] == 0).mean()
+        #rate_neu = (df["target"] == 0).mean()
+
+
+        if verbose:
+            print("=" * 60)
+            print(f"ticker={ticker} | model={model_name} | horizon={h}")
+            print(f"n={row['n_samples']} | "f"pos={rate_pos:.3f} | "f"neg={rate_neg:.3f}")    #| "f"neu={rate_neu:.3f} 
+            print(f"precision={row['precision']:.3f} | recall={row['recall']:.3f}")
+            print(metrics["confusion_matrix"])
+            print(metrics["report"])
+    
+            
+            
+    return pd.DataFrame(results).sort_values(by="precision", ascending=False)
 
 
 models = ["logreg", "knn", "rf","xgb"]
 
-stocks = ["AAPL","MSFT","NVDA","AMZN","TSLA","META","TSM"]
+stocks = ["AAPL","MSFT","NVDA","AMZN","TSLA","META","TSM","QQQ","SPY"]
 
 for s in stocks:
     all_results = []
@@ -503,7 +503,7 @@ for s in stocks:
             end="2026-01-01",model_name=m, verbose=True)
         all_results.append(df_res)
 
-    final = pd.concat(all_results).sort_values("score_B", ascending=False)
+    final = pd.concat(all_results).sort_values("precision", ascending=False)
     print(final.head(20))
     final.to_csv( "simulation_results/" +s+"_results"+".csv", index = False)
 
