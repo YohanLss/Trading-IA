@@ -12,6 +12,8 @@ import warnings
 from sklearn.exceptions import UndefinedMetricWarning
 from sklearn.metrics import recall_score
 from sklearn.metrics import precision_score, recall_score
+from sklearn import svm
+import lightgbm as lgb
 
 
 warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
@@ -81,6 +83,17 @@ def add_features(df, horizon):
         df["ann_vol_60"] = ret.rolling(60).std() * np.sqrt(252)
         df["trend_strength_50_200"] = df["sma_50"] / (df["sma_200"] + eps)
 
+        #On considère une action comme "high volume" si le volume est > 2x la moyenne sur 20 jours
+        df['high_vol_stock'] = df['Volume'] > (df['Volume'].rolling(window=20).mean() * 2)
+
+        # Calcul de trending_stock
+        # On considère une action comme "trending" si le prix de clôture est au-dessus de sa moyenne mobile 50 jours
+        df['trending_stock'] = df['Close'] > df['Close'].rolling(window=50).mean()
+
+        # On peut transformer les booléens en int pour le modèle (0 ou 1)
+        df['high_vol_stock'] = df['high_vol_stock'].astype(int)
+        df['trending_stock'] = df['trending_stock'].astype(int)
+
 
     
 
@@ -134,6 +147,19 @@ def add_features(df, horizon):
         df["ema_20_50"]  = close.ewm(span=20).mean() - close.ewm(span=50).mean()
         df["ema_50_100"] = close.ewm(span=50).mean() - close.ewm(span=100).mean()
 
+        #On considère une action comme "high volume" si le volume est > 2x la moyenne sur 20 jours
+        df['high_vol_stock'] = df['Volume'] > (df['Volume'].rolling(window=20).mean() * 2)
+
+        # Calcul de trending_stock
+        # On considère une action comme "trending" si le prix de clôture est au-dessus de sa moyenne mobile 50 jours
+        df['trending_stock'] = df['Close'] > df['Close'].rolling(window=50).mean()
+
+        # On peut transformer les booléens en int pour le modèle (0 ou 1)
+        df['high_vol_stock'] = df['high_vol_stock'].astype(int)
+        df['trending_stock'] = df['trending_stock'].astype(int)
+
+
+
         
 
     # ===== COURT TERME =====
@@ -178,6 +204,18 @@ def add_features(df, horizon):
         low14 = df["Low"].rolling(14).min()
         high14 = df["High"].rolling(14).max()
         df["stoch_k_14"] = (df["Close"] - low14) / (high14 - low14 + eps)
+        #On considère une action comme "high volume" si le volume est > 2x la moyenne sur 20 jours
+        df['high_vol_stock'] = df['Volume'] > (df['Volume'].rolling(window=20).mean() * 2)
+
+        # Calcul de trending_stock
+        # On considère une action comme "trending" si le prix de clôture est au-dessus de sa moyenne mobile 50 jours
+        df['trending_stock'] = df['Close'] > df['Close'].rolling(window=50).mean()
+
+        # On peut transformer les booléens en int pour le modèle (0 ou 1)
+        df['high_vol_stock'] = df['high_vol_stock'].astype(int)
+        df['trending_stock'] = df['trending_stock'].astype(int)
+
+
 
 
     return df
@@ -275,12 +313,19 @@ def get_model(model_name="rf",scale_pos_weight=0):
             max_iter=3000,
             class_weight="balanced"
         )
-
+    
+    elif model_name == "svm":
+        return svm.SVC(
+            kernel='rbf',           
+            C=1.0,
+            probability=True
+        )
     elif model_name == "xgb":
         return xgb.XGBClassifier(
-        n_estimators=600,
-        max_depth=4,
-        learning_rate=0.05,
+        n_estimators=800,
+        max_depth=3,
+        learning_rate=0.03,
+        gamma=1,
         subsample=0.8,
         colsample_bytree=0.8,
         objective="binary:logistic" ,       #"multi:softprob",
@@ -289,6 +334,22 @@ def get_model(model_name="rf",scale_pos_weight=0):
         random_state=42,
         n_jobs=-1
     )
+
+    elif model_name == "lgbm":
+        return lgb.LGBMClassifier(
+            n_estimators=1000,
+            learning_rate=0.02,
+            num_leaves=15,          # très important ↓ overfit
+            max_depth=-1,
+            min_child_samples=50,   # évite bruit
+            subsample=0.8,
+            colsample_bytree=0.8,
+            reg_alpha=1,
+            reg_lambda=1,
+            class_weight="balanced",
+            random_state=42,
+            n_jobs=-1
+        )
     #peut-être faire plusieurs tests pour knn
     elif model_name == "knn":
         return KNeighborsClassifier(n_neighbors=7 ,
@@ -488,7 +549,7 @@ def test_thresholds(
     return pd.DataFrame(results).sort_values(by="precision", ascending=False)
 
 
-models = ["logreg", "knn", "rf","xgb"]
+models = ["logreg", "knn", "rf","xgb","lgbm"]
 
 stocks = ["AAPL","MSFT","NVDA","AMZN","TSLA","META","TSM","QQQ","SPY"]
 
